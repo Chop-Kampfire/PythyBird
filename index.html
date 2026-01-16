@@ -1057,7 +1057,11 @@
 
       // Leaderboard
       leaderboard: [],
-      leaderboardFilter: 'all'
+      leaderboardFilter: 'all',
+
+      // Timing (for consistent physics across frame rates)
+      lastTime: 0,
+      deltaTime: 0
     };
 
     // Game Constants
@@ -1741,10 +1745,11 @@
       state.playerVelocity = 0;
       state.obstacles = [];
       state.obstacleTimer = 0;
-      
+      state.lastTime = 0; // Reset timing to prevent big delta on first frame
+
       startOverlay.classList.add('hidden');
       gameOverOverlay.classList.add('hidden');
-      
+
       updateScore();
     }
 
@@ -1818,7 +1823,21 @@
     // GAME LOOP
     // ============================================
 
-    function gameLoop() {
+    const TARGET_FPS = 60;
+    const TARGET_FRAME_TIME = 1000 / TARGET_FPS;
+
+    function gameLoop(currentTime) {
+      // Calculate delta time and normalize to 60fps
+      if (state.lastTime === 0) {
+        state.lastTime = currentTime;
+      }
+      const rawDelta = currentTime - state.lastTime;
+      state.lastTime = currentTime;
+
+      // Normalize delta time (1.0 = 60fps, 0.5 = 120fps, 2.0 = 30fps)
+      // Cap delta to prevent huge jumps if tab was inactive
+      state.deltaTime = Math.min(rawDelta / TARGET_FRAME_TIME, 3);
+
       update();
       render();
       requestAnimationFrame(gameLoop);
@@ -1827,10 +1846,12 @@
     function update() {
       if (!state.isPlaying) return;
 
-      // Physics
-      state.playerVelocity += GRAVITY;
-      state.playerY += state.playerVelocity;
-      state.distance += OBSTACLE_SPEED * 0.1;
+      const dt = state.deltaTime;
+
+      // Physics (scaled by delta time)
+      state.playerVelocity += GRAVITY * dt;
+      state.playerY += state.playerVelocity * dt;
+      state.distance += OBSTACLE_SPEED * 0.1 * dt;
 
       // Bounds check
       if (state.playerY < PLAYER_SIZE / 2 || state.playerY > state.height - PLAYER_SIZE / 2) {
@@ -1838,8 +1859,8 @@
         return;
       }
 
-      // Generate obstacles
-      state.obstacleTimer++;
+      // Generate obstacles (using accumulated time instead of frame count)
+      state.obstacleTimer += dt;
       if (state.obstacleTimer >= OBSTACLE_INTERVAL) {
         state.obstacleTimer = 0;
         generateObstacle();
@@ -1848,7 +1869,7 @@
       // Update obstacles
       for (let i = state.obstacles.length - 1; i >= 0; i--) {
         const obs = state.obstacles[i];
-        obs.x -= OBSTACLE_SPEED;
+        obs.x -= OBSTACLE_SPEED * dt;
 
         // Score when passing
         if (!obs.passed && obs.x + OBSTACLE_WIDTH < state.width / 4) {

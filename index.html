@@ -1269,7 +1269,8 @@
 
     async function fetchLeaderboard(limit = 10, feedFilter = null) {
       try {
-        let query = `high_scores?select=wallet_address,score,distance,price_feed,created_at&order=score.desc&limit=${limit}`;
+        // Fetch more scores to ensure we get enough unique addresses after deduplication
+        let query = `high_scores?select=wallet_address,score,distance,price_feed,created_at&order=score.desc&limit=100`;
 
         if (feedFilter) {
           query += `&price_feed=eq.${encodeURIComponent(feedFilter)}`;
@@ -1279,9 +1280,21 @@
           prefer: 'return=representation'
         });
 
-        state.leaderboard = scores || [];
+        // Keep only the highest score per wallet address
+        const uniqueScores = [];
+        const seenAddresses = new Set();
+
+        for (const score of (scores || [])) {
+          if (!seenAddresses.has(score.wallet_address)) {
+            seenAddresses.add(score.wallet_address);
+            uniqueScores.push(score);
+          }
+          if (uniqueScores.length >= limit) break;
+        }
+
+        state.leaderboard = uniqueScores;
         renderLeaderboard();
-        return scores;
+        return uniqueScores;
       } catch (error) {
         console.error('Failed to fetch leaderboard:', error);
         state.leaderboard = [];

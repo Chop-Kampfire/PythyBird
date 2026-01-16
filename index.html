@@ -1,0 +1,2006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pyth Flappy - Navigate the Markets</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --accent-green: #00ff88;
+      --accent-red: #ff3366;
+      --accent-purple: #8b5cf6;
+      --text-primary: #ffffff;
+      --text-secondary: #6b7280;
+      --grid-color: rgba(139, 92, 246, 0.1);
+    }
+
+    body {
+      font-family: 'Space Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: 
+        linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+        repeating-linear-gradient(90deg, var(--grid-color) 0px, var(--grid-color) 1px, transparent 1px, transparent 60px),
+        repeating-linear-gradient(0deg, var(--grid-color) 0px, var(--grid-color) 1px, transparent 1px, transparent 60px);
+    }
+
+    header {
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+      background: rgba(18, 18, 26, 0.8);
+      backdrop-filter: blur(10px);
+      position: relative;
+      z-index: 100;
+    }
+
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent-green), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo span {
+      color: var(--text-secondary);
+      -webkit-text-fill-color: var(--text-secondary);
+      font-weight: 400;
+      font-size: 0.8rem;
+      margin-left: 0.5rem;
+    }
+
+    .feed-selector {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .feed-selector label {
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .feed-selector select {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
+      padding: 0.5rem 1rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.9rem;
+      border-radius: 4px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .feed-selector select:hover,
+    .feed-selector select:focus {
+      border-color: var(--accent-purple);
+    }
+
+    /* Feed Discovery System */
+    .feed-discovery {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      position: relative;
+    }
+
+    .feed-search {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
+      padding: 0.5rem 1rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      outline: none;
+      width: 180px;
+      transition: border-color 0.2s, width 0.2s;
+    }
+
+    .feed-search:focus {
+      border-color: var(--accent-purple);
+      width: 220px;
+    }
+
+    .feed-search::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .asset-class-container {
+      position: relative;
+    }
+
+    .asset-class-btn {
+      background: #e8e4df;
+      border: none;
+      color: #1a1a2e;
+      padding: 0.5rem 1rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s;
+    }
+
+    .asset-class-btn:hover {
+      background: #d4d0cb;
+    }
+
+    .asset-class-btn::after {
+      content: '▼';
+      font-size: 0.6rem;
+    }
+
+    .asset-class-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      min-width: 220px;
+      z-index: 100;
+      display: none;
+      overflow: hidden;
+    }
+
+    .asset-class-dropdown.open {
+      display: block;
+    }
+
+    .asset-class-dropdown-header {
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .asset-class-option {
+      padding: 0.6rem 1rem;
+      font-size: 0.85rem;
+      color: #1a1a2e;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s;
+    }
+
+    .asset-class-option:hover {
+      background: #f3f4f6;
+    }
+
+    .asset-class-option.selected {
+      background: #f3f4f6;
+    }
+
+    .asset-class-option.selected::after {
+      content: '✓';
+      color: var(--accent-purple);
+      font-weight: bold;
+    }
+
+    .selected-feed-display {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--accent-green);
+      padding: 0.5rem 1rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border-radius: 4px;
+      min-width: 120px;
+      text-align: center;
+    }
+
+    .feed-results-container {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 99;
+      min-width: 300px;
+      display: none;
+    }
+
+    .feed-results-container.open {
+      display: block;
+    }
+
+    .feed-results-container::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .feed-results-container::-webkit-scrollbar-track {
+      background: var(--bg-dark);
+    }
+
+    .feed-results-container::-webkit-scrollbar-thumb {
+      background: var(--accent-purple);
+      border-radius: 3px;
+    }
+
+    .feed-result-item {
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+      transition: background 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .feed-result-item:hover {
+      background: rgba(139, 92, 246, 0.15);
+    }
+
+    .feed-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .feed-result-symbol {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .feed-result-class {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      background: rgba(139, 92, 246, 0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+    }
+
+    .feed-loading {
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .feed-no-results {
+      padding: 1rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    .game-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .stats-bar {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      padding: 0.75rem 1.25rem;
+      border-radius: 4px;
+      min-width: 150px;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-secondary);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .stat-value.price {
+      color: var(--accent-green);
+    }
+
+    .stat-value.score {
+      color: var(--accent-purple);
+    }
+
+    .stat-value.distance {
+      color: var(--text-primary);
+    }
+
+    .price-change {
+      font-size: 0.75rem;
+      margin-top: 0.25rem;
+    }
+
+    .price-change.up {
+      color: var(--accent-green);
+    }
+
+    .price-change.down {
+      color: var(--accent-red);
+    }
+
+    .game-container {
+      flex: 1;
+      position: relative;
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(10, 10, 15, 0.9);
+      backdrop-filter: blur(5px);
+      z-index: 10;
+    }
+
+    .overlay.hidden {
+      display: none;
+    }
+
+    .overlay h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, var(--accent-green), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .overlay p {
+      color: var(--text-secondary);
+      margin-bottom: 2rem;
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.6;
+    }
+
+    .start-btn {
+      background: linear-gradient(135deg, var(--accent-purple), #6d28d9);
+      border: none;
+      color: white;
+      padding: 1rem 3rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .start-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
+    }
+
+    .game-over-stats {
+      display: flex;
+      gap: 2rem;
+      margin: 1.5rem 0;
+    }
+
+    .game-over-stat {
+      text-align: center;
+    }
+
+    .game-over-stat .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-secondary);
+    }
+
+    .game-over-stat .value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .side-panel {
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .panel-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 4px;
+      padding: 1rem;
+    }
+
+    .panel-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent-purple);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    .price-history {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .price-history::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .price-history::-webkit-scrollbar-track {
+      background: var(--bg-dark);
+    }
+
+    .price-history::-webkit-scrollbar-thumb {
+      background: var(--accent-purple);
+      border-radius: 2px;
+    }
+
+    .price-entry {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .price-entry .time {
+      color: var(--text-secondary);
+    }
+
+    .price-entry .price {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    .price-entry.up .price {
+      color: var(--accent-green);
+    }
+
+    .price-entry.down .price {
+      color: var(--accent-red);
+    }
+
+    .instructions {
+      font-size: 0.8rem;
+      line-height: 1.8;
+      color: var(--text-secondary);
+    }
+
+    .instructions strong {
+      color: var(--text-primary);
+    }
+
+    .instructions kbd {
+      background: rgba(139, 92, 246, 0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      font-family: 'Space Mono', monospace;
+      color: var(--accent-purple);
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-red);
+    }
+
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .leaderboard {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .leaderboard-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      background: rgba(139, 92, 246, 0.05);
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+
+    .leaderboard-entry .rank {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(139, 92, 246, 0.2);
+      border-radius: 50%;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7rem;
+      color: var(--accent-purple);
+    }
+
+    .leaderboard-entry .score {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--accent-green);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .loading {
+      animation: pulse 1.5s infinite;
+    }
+
+    @media (max-width: 900px) {
+      .side-panel {
+        display: none;
+      }
+
+      .main-content {
+        padding: 0.5rem;
+      }
+
+      header {
+        padding: 0.75rem 1rem;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+    }
+
+    /* Wallet Button Styles */
+    .wallet-section {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .wallet-address {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent-green);
+      background: rgba(0, 255, 136, 0.1);
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+
+    .wallet-btn {
+      background: linear-gradient(135deg, #AB9FF2, #8b5cf6);
+      border: none;
+      color: white;
+      padding: 0.5rem 1rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .wallet-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 20px rgba(139, 92, 246, 0.3);
+    }
+
+    .wallet-btn.connected {
+      background: linear-gradient(135deg, #00ff88, #00cc6a);
+    }
+
+    .wallet-btn.small {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.65rem;
+    }
+
+    /* Leaderboard Styles */
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .leaderboard-filter {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .filter-btn {
+      background: transparent;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-secondary);
+      padding: 0.25rem 0.5rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.6rem;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn:hover,
+    .filter-btn.active {
+      background: rgba(139, 92, 246, 0.2);
+      color: var(--accent-purple);
+      border-color: var(--accent-purple);
+    }
+
+    .leaderboard-entry {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.5rem;
+      background: rgba(139, 92, 246, 0.05);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .leaderboard-entry.highlight {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+
+    .leaderboard-entry .rank {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(139, 92, 246, 0.2);
+      border-radius: 50%;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65rem;
+      color: var(--accent-purple);
+    }
+
+    .leaderboard-entry .rank.gold {
+      background: linear-gradient(135deg, #FFD700, #FFA500);
+      color: #1a1a2e;
+    }
+
+    .leaderboard-entry .rank.silver {
+      background: linear-gradient(135deg, #C0C0C0, #A0A0A0);
+      color: #1a1a2e;
+    }
+
+    .leaderboard-entry .rank.bronze {
+      background: linear-gradient(135deg, #CD7F32, #8B4513);
+      color: #1a1a2e;
+    }
+
+    .leaderboard-entry .address {
+      font-family: 'Space Mono', monospace;
+      color: var(--text-secondary);
+      font-size: 0.7rem;
+    }
+
+    .leaderboard-entry .score {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+
+    .leaderboard-loading,
+    .leaderboard-empty {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .personal-best {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid rgba(139, 92, 246, 0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .personal-best-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .personal-best-score {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+
+    /* Submit score section */
+    .submit-score-section {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: rgba(139, 92, 246, 0.1);
+      border-radius: 4px;
+    }
+
+    .submit-status {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-align: center;
+      margin: 0;
+    }
+
+    .submit-status.success {
+      color: var(--accent-green);
+    }
+
+    .submit-status.error {
+      color: var(--accent-red);
+    }
+
+    .connect-prompt {
+      margin-top: 1rem;
+      text-align: center;
+    }
+
+    .connect-prompt p {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <div class="logo">PYTH FLAPPY <span>Navigate the Markets</span></div>
+      <div class="feed-discovery">
+        <input type="text" class="feed-search" id="feedSearch" placeholder="Search symbols..." autocomplete="off">
+        <div class="asset-class-container">
+          <button class="asset-class-btn" id="assetClassBtn">Asset Class</button>
+          <div class="asset-class-dropdown" id="assetClassDropdown">
+            <div class="asset-class-dropdown-header">Asset Class</div>
+            <div class="asset-class-option selected" data-class="all">All</div>
+            <div class="asset-class-option" data-class="commodities">Commodities</div>
+            <div class="asset-class-option" data-class="crypto">Crypto</div>
+            <div class="asset-class-option" data-class="crypto_index">Crypto Index</div>
+            <div class="asset-class-option" data-class="crypto_nav">Crypto NAV</div>
+            <div class="asset-class-option" data-class="crypto_redemption_rate">Crypto Redemption Rate</div>
+            <div class="asset-class-option" data-class="eco">ECO</div>
+            <div class="asset-class-option" data-class="equity">Equity</div>
+            <div class="asset-class-option" data-class="fx">FX</div>
+            <div class="asset-class-option" data-class="kalshi">Kalshi</div>
+            <div class="asset-class-option" data-class="metal">Metal</div>
+            <div class="asset-class-option" data-class="rates">Rates</div>
+          </div>
+        </div>
+        <div class="selected-feed-display" id="selectedFeedDisplay">BTC/USD</div>
+        <div class="feed-results-container" id="feedResults"></div>
+      </div>
+      <div class="connection-status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Connecting...</span>
+      </div>
+      <div class="wallet-section">
+        <span class="wallet-address" id="walletAddress" style="display: none;"></span>
+        <button class="wallet-btn" id="walletBtn">CONNECT WALLET</button>
+      </div>
+    </header>
+
+    <div class="main-content">
+      <div class="game-panel">
+        <div class="stats-bar">
+          <div class="stat-card">
+            <div class="stat-label">Current Price</div>
+            <div class="stat-value price" id="currentPrice">--</div>
+            <div class="price-change" id="priceChange">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Score</div>
+            <div class="stat-value score" id="score">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Distance</div>
+            <div class="stat-value distance" id="distance">0m</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">High Score</div>
+            <div class="stat-value score" id="highScore">0</div>
+          </div>
+        </div>
+
+        <div class="game-container">
+          <canvas id="gameCanvas"></canvas>
+          
+          <div class="overlay" id="startOverlay">
+            <h2>PYTH FLAPPY</h2>
+            <p>Navigate through obstacles generated by real-time Pyth Network price feeds. The market moves - can you keep up?</p>
+            <button class="start-btn" id="startBtn">START TRADING</button>
+          </div>
+
+          <div class="overlay hidden" id="gameOverOverlay">
+            <h2>LIQUIDATED</h2>
+            <div class="game-over-stats">
+              <div class="game-over-stat">
+                <div class="label">Final Score</div>
+                <div class="value" id="finalScore">0</div>
+              </div>
+              <div class="game-over-stat">
+                <div class="label">Distance</div>
+                <div class="value" id="finalDistance">0m</div>
+              </div>
+            </div>
+            <p>The market got you. Try again?</p>
+            <button class="start-btn" id="restartBtn">TRADE AGAIN</button>
+            <div class="submit-score-section" id="submitScoreSection" style="display: none;">
+              <p class="submit-status" id="submitStatus">Submitting score...</p>
+            </div>
+            <div class="connect-prompt" id="connectPrompt" style="display: none;">
+              <p>Connect wallet to submit score to leaderboard</p>
+              <button class="wallet-btn small" id="gameOverWalletBtn">CONNECT WALLET</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-panel">
+        <div class="panel-card">
+          <div class="panel-title">📊 Price Feed</div>
+          <div class="price-history" id="priceHistory">
+            <div class="loading" style="text-align: center; color: var(--text-secondary);">Waiting for data...</div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">🎮 How to Play</div>
+          <div class="instructions">
+            <p>Press <kbd>SPACE</kbd> or <kbd>CLICK</kbd> to flap and stay airborne.</p>
+            <p style="margin-top: 0.5rem;">The <strong>obstacles</strong> are generated from real Pyth price data - price movements create the gaps you navigate through.</p>
+            <p style="margin-top: 0.5rem;">Higher <strong>volatility</strong> = harder gameplay!</p>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-title">
+            <span>🏆 High Scores</span>
+            <div class="leaderboard-filter">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="feed">This Feed</button>
+            </div>
+          </div>
+          <div class="leaderboard" id="leaderboard">
+            <div class="leaderboard-loading">Loading...</div>
+          </div>
+          <div class="personal-best" id="personalBest" style="display: none;">
+            <span class="personal-best-label">Your Best</span>
+            <span class="personal-best-score" id="personalBestScore">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // PYTH FLAPPY - Price Feed Powered Game
+    // ============================================
+
+    // Price Feed Configuration
+    const HERMES_ENDPOINT = 'https://hermes.pyth.network';
+
+    // Supabase Configuration - Replace with your project details
+    const SUPABASE_URL = 'https://ybayglrpfnqfddihscof.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliYXlnbHJwZm5xZmRkaWhzY29mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg1MzMxMTgsImV4cCI6MjA4NDEwOTExOH0.TP_aVS7dzVUMiCtSFA3Z30KPdB0244Uk4SyJhDevVu4';
+
+    // Game State
+    const state = {
+      currentFeed: null,
+      currentFeedSymbol: 'BTC/USD',
+      currentPrice: null,
+      previousPrice: null,
+      priceHistory: [],
+      eventSource: null,
+      connected: false,
+
+      // Feed Discovery
+      allFeeds: [],
+      filteredFeeds: [],
+      searchQuery: '',
+      selectedAssetClass: 'all',
+      feedsLoading: true,
+
+      // Game
+      isPlaying: false,
+      score: 0,
+      distance: 0,
+      highScore: parseInt(localStorage.getItem('pythFlappyHighScore') || '0'),
+
+      // Player
+      playerY: 0,
+      playerVelocity: 0,
+
+      // Obstacles
+      obstacles: [],
+      obstacleTimer: 0,
+
+      // Canvas
+      canvas: null,
+      ctx: null,
+      width: 0,
+      height: 0,
+
+      // Wallet
+      wallet: {
+        connected: false,
+        publicKey: null,
+        displayAddress: null,
+        provider: null
+      },
+
+      // Leaderboard
+      leaderboard: [],
+      leaderboardFilter: 'all'
+    };
+
+    // Game Constants
+    const GRAVITY = 0.4;
+    const JUMP_FORCE = -8;
+    const PLAYER_SIZE = 30;
+    const OBSTACLE_WIDTH = 60;
+    const OBSTACLE_GAP = 150;
+    const OBSTACLE_SPEED = 3;
+    const OBSTACLE_INTERVAL = 120; // frames
+
+    // DOM Elements
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const feedSearchEl = document.getElementById('feedSearch');
+    const assetClassBtn = document.getElementById('assetClassBtn');
+    const assetClassDropdown = document.getElementById('assetClassDropdown');
+    const selectedFeedDisplay = document.getElementById('selectedFeedDisplay');
+    const feedResultsEl = document.getElementById('feedResults');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const currentPriceEl = document.getElementById('currentPrice');
+    const priceChangeEl = document.getElementById('priceChange');
+    const scoreEl = document.getElementById('score');
+    const distanceEl = document.getElementById('distance');
+    const highScoreEl = document.getElementById('highScore');
+    const priceHistoryEl = document.getElementById('priceHistory');
+    const startOverlay = document.getElementById('startOverlay');
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const finalScoreEl = document.getElementById('finalScore');
+    const finalDistanceEl = document.getElementById('finalDistance');
+
+    // ============================================
+    // PHANTOM WALLET INTEGRATION
+    // ============================================
+
+    function getPhantomProvider() {
+      if ('phantom' in window) {
+        const provider = window.phantom?.solana;
+        if (provider?.isPhantom) {
+          return provider;
+        }
+      }
+      return null;
+    }
+
+    async function connectWallet() {
+      const provider = getPhantomProvider();
+
+      if (!provider) {
+        window.open('https://phantom.app/', '_blank');
+        return false;
+      }
+
+      try {
+        const response = await provider.connect();
+        const publicKey = response.publicKey.toString();
+
+        state.wallet.connected = true;
+        state.wallet.publicKey = publicKey;
+        state.wallet.displayAddress = truncateAddress(publicKey);
+        state.wallet.provider = provider;
+
+        localStorage.setItem('pythFlappyWalletConnected', 'true');
+        updateWalletUI();
+        fetchPersonalBest();
+        return true;
+      } catch (error) {
+        console.error('Wallet connection failed:', error);
+        return false;
+      }
+    }
+
+    async function disconnectWallet() {
+      const provider = getPhantomProvider();
+
+      if (provider && state.wallet.connected) {
+        try {
+          await provider.disconnect();
+        } catch (e) {
+          console.log('Disconnect error (ignored):', e);
+        }
+      }
+
+      state.wallet.connected = false;
+      state.wallet.publicKey = null;
+      state.wallet.displayAddress = null;
+      state.wallet.provider = null;
+
+      localStorage.removeItem('pythFlappyWalletConnected');
+      updateWalletUI();
+      document.getElementById('personalBest').style.display = 'none';
+    }
+
+    function truncateAddress(address) {
+      if (!address) return '';
+      return `${address.slice(0, 4)}...${address.slice(-4)}`;
+    }
+
+    function updateWalletUI() {
+      const connectBtn = document.getElementById('walletBtn');
+      const walletAddress = document.getElementById('walletAddress');
+
+      if (state.wallet.connected) {
+        connectBtn.textContent = 'DISCONNECT';
+        connectBtn.classList.add('connected');
+        walletAddress.textContent = state.wallet.displayAddress;
+        walletAddress.style.display = 'block';
+      } else {
+        connectBtn.textContent = 'CONNECT WALLET';
+        connectBtn.classList.remove('connected');
+        walletAddress.style.display = 'none';
+      }
+    }
+
+    async function initWallet() {
+      const provider = getPhantomProvider();
+
+      if (provider) {
+        provider.on('accountChanged', (publicKey) => {
+          if (publicKey) {
+            state.wallet.publicKey = publicKey.toString();
+            state.wallet.displayAddress = truncateAddress(state.wallet.publicKey);
+            updateWalletUI();
+            fetchPersonalBest();
+          } else {
+            disconnectWallet();
+          }
+        });
+
+        if (localStorage.getItem('pythFlappyWalletConnected') === 'true') {
+          try {
+            const response = await provider.connect({ onlyIfTrusted: true });
+            state.wallet.connected = true;
+            state.wallet.publicKey = response.publicKey.toString();
+            state.wallet.displayAddress = truncateAddress(state.wallet.publicKey);
+            state.wallet.provider = provider;
+            updateWalletUI();
+          } catch (e) {
+            localStorage.removeItem('pythFlappyWalletConnected');
+          }
+        }
+      }
+    }
+
+    function handleWalletClick() {
+      if (state.wallet.connected) {
+        disconnectWallet();
+      } else {
+        connectWallet();
+      }
+    }
+
+    // ============================================
+    // SUPABASE API INTEGRATION
+    // ============================================
+
+    async function supabaseRequest(endpoint, options = {}) {
+      const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
+      const headers = {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': options.prefer || 'return=minimal'
+      };
+
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...options.headers }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Supabase error: ${response.status}`);
+      }
+
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
+    }
+
+    async function submitScore(score, distance, priceFeed) {
+      if (!state.wallet.connected || !state.wallet.publicKey) {
+        console.log('Wallet not connected, score not submitted to leaderboard');
+        return false;
+      }
+
+      try {
+        await supabaseRequest('high_scores', {
+          method: 'POST',
+          body: JSON.stringify({
+            wallet_address: state.wallet.publicKey,
+            score: score,
+            distance: Math.floor(distance),
+            price_feed: priceFeed
+          }),
+          prefer: 'return=representation'
+        });
+
+        console.log('Score submitted successfully');
+        await fetchLeaderboard();
+        return true;
+      } catch (error) {
+        console.error('Failed to submit score:', error);
+        return false;
+      }
+    }
+
+    async function fetchLeaderboard(limit = 10, feedFilter = null) {
+      try {
+        let query = `high_scores?select=wallet_address,score,distance,price_feed,created_at&order=score.desc&limit=${limit}`;
+
+        if (feedFilter) {
+          query += `&price_feed=eq.${encodeURIComponent(feedFilter)}`;
+        }
+
+        const scores = await supabaseRequest(query, {
+          prefer: 'return=representation'
+        });
+
+        state.leaderboard = scores || [];
+        renderLeaderboard();
+        return scores;
+      } catch (error) {
+        console.error('Failed to fetch leaderboard:', error);
+        state.leaderboard = [];
+        renderLeaderboard();
+        return [];
+      }
+    }
+
+    async function fetchPersonalBest() {
+      if (!state.wallet.connected || !state.wallet.publicKey) {
+        return null;
+      }
+
+      try {
+        const query = `high_scores?wallet_address=eq.${state.wallet.publicKey}&order=score.desc&limit=1`;
+        const results = await supabaseRequest(query, {
+          prefer: 'return=representation'
+        });
+
+        const personalBestEl = document.getElementById('personalBest');
+        const personalBestScoreEl = document.getElementById('personalBestScore');
+
+        if (results && results.length > 0) {
+          personalBestEl.style.display = 'flex';
+          personalBestScoreEl.textContent = results[0].score;
+          return results[0];
+        } else {
+          personalBestEl.style.display = 'none';
+          return null;
+        }
+      } catch (error) {
+        console.error('Failed to fetch personal best:', error);
+        return null;
+      }
+    }
+
+    function renderLeaderboard() {
+      const leaderboardEl = document.getElementById('leaderboard');
+
+      if (!state.leaderboard || state.leaderboard.length === 0) {
+        leaderboardEl.innerHTML = '<div class="leaderboard-empty">No scores yet. Be the first!</div>';
+        return;
+      }
+
+      leaderboardEl.innerHTML = state.leaderboard.map((entry, index) => {
+        const isCurrentUser = state.wallet.publicKey === entry.wallet_address;
+        const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
+        const highlightClass = isCurrentUser ? 'highlight' : '';
+
+        return `
+          <div class="leaderboard-entry ${highlightClass}">
+            <span class="rank ${rankClass}">${index + 1}</span>
+            <span class="address">${truncateAddress(entry.wallet_address)}</span>
+            <span class="score">${entry.score}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Initialize
+    function init() {
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+
+      // Controls
+      document.addEventListener('keydown', handleInput);
+      canvas.addEventListener('click', handleInput);
+      canvas.addEventListener('touchstart', handleInput);
+
+      // Buttons
+      startBtn.addEventListener('click', startGame);
+      restartBtn.addEventListener('click', startGame);
+
+      // Wallet buttons
+      document.getElementById('walletBtn').addEventListener('click', handleWalletClick);
+      document.getElementById('gameOverWalletBtn').addEventListener('click', handleWalletClick);
+
+      // Leaderboard filter buttons
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+          const filter = e.target.dataset.filter;
+          state.leaderboardFilter = filter;
+          fetchLeaderboard(10, filter === 'feed' ? state.currentFeedSymbol : null);
+        });
+      });
+
+      // Feed Discovery Setup
+      initFeedDiscovery();
+
+      // Initialize wallet
+      initWallet();
+
+      // Display high score
+      highScoreEl.textContent = state.highScore;
+
+      // Fetch all feeds and connect to default
+      fetchAllFeeds();
+
+      // Fetch initial leaderboard
+      fetchLeaderboard();
+
+      // Start render loop
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ============================================
+    // FEED DISCOVERY SYSTEM
+    // ============================================
+
+    async function fetchAllFeeds() {
+      state.feedsLoading = true;
+      renderFeedResults();
+
+      try {
+        const response = await fetch(`${HERMES_ENDPOINT}/v2/price_feeds`);
+        const feeds = await response.json();
+
+        // Sort alphabetically by symbol and store
+        state.allFeeds = feeds.sort((a, b) => {
+          const symbolA = a.attributes?.symbol || a.id;
+          const symbolB = b.attributes?.symbol || b.id;
+          return symbolA.localeCompare(symbolB);
+        });
+
+        state.feedsLoading = false;
+        filterFeeds();
+
+        // Connect to default BTC/USD feed
+        const btcFeed = state.allFeeds.find(f =>
+          f.attributes?.symbol === 'Crypto.BTC/USD' ||
+          f.attributes?.base === 'BTC'
+        );
+        if (btcFeed) {
+          selectFeed(btcFeed.id, btcFeed.attributes?.symbol || 'BTC/USD');
+        } else if (state.allFeeds.length > 0) {
+          const firstFeed = state.allFeeds[0];
+          selectFeed(firstFeed.id, firstFeed.attributes?.symbol || firstFeed.id.slice(0, 10));
+        }
+      } catch (error) {
+        console.error('Failed to fetch price feeds:', error);
+        state.feedsLoading = false;
+        // Fallback to hardcoded BTC feed
+        connectToFeed('0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43');
+      }
+    }
+
+    function initFeedDiscovery() {
+      // Search input
+      feedSearchEl.addEventListener('input', (e) => {
+        state.searchQuery = e.target.value.toLowerCase();
+        filterFeeds();
+      });
+
+      feedSearchEl.addEventListener('focus', () => {
+        feedResultsEl.classList.add('open');
+      });
+
+      // Asset class dropdown toggle
+      assetClassBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        assetClassDropdown.classList.toggle('open');
+        feedResultsEl.classList.remove('open');
+      });
+
+      // Asset class selection
+      assetClassDropdown.querySelectorAll('.asset-class-option').forEach(option => {
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const assetClass = option.dataset.class;
+          state.selectedAssetClass = assetClass;
+
+          // Update selected state
+          assetClassDropdown.querySelectorAll('.asset-class-option').forEach(opt => {
+            opt.classList.remove('selected');
+          });
+          option.classList.add('selected');
+
+          // Update button text
+          assetClassBtn.textContent = option.textContent;
+
+          // Close dropdown and filter
+          assetClassDropdown.classList.remove('open');
+          filterFeeds();
+        });
+      });
+
+      // Close dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.feed-discovery')) {
+          assetClassDropdown.classList.remove('open');
+          feedResultsEl.classList.remove('open');
+        }
+      });
+    }
+
+    function filterFeeds() {
+      const query = state.searchQuery;
+      const assetClass = state.selectedAssetClass;
+
+      state.filteredFeeds = state.allFeeds.filter(feed => {
+        const symbol = (feed.attributes?.symbol || '').toLowerCase();
+        const base = (feed.attributes?.base || '').toLowerCase();
+        const feedAssetClass = (feed.attributes?.asset_type || '').toLowerCase();
+
+        // Search filter
+        const matchesSearch = !query ||
+          symbol.includes(query) ||
+          base.includes(query);
+
+        // Asset class filter
+        const matchesClass = assetClass === 'all' ||
+          feedAssetClass === assetClass;
+
+        return matchesSearch && matchesClass;
+      });
+
+      renderFeedResults();
+    }
+
+    function renderFeedResults() {
+      if (state.feedsLoading) {
+        feedResultsEl.innerHTML = '<div class="feed-loading">Loading feeds...</div>';
+        return;
+      }
+
+      if (state.filteredFeeds.length === 0) {
+        feedResultsEl.innerHTML = '<div class="feed-no-results">No feeds found</div>';
+        return;
+      }
+
+      // Limit to first 50 results for performance
+      const displayFeeds = state.filteredFeeds.slice(0, 50);
+
+      feedResultsEl.innerHTML = displayFeeds.map(feed => {
+        const symbol = feed.attributes?.symbol || feed.id.slice(0, 10);
+        const assetType = feed.attributes?.asset_type || 'unknown';
+        const displaySymbol = symbol.replace('Crypto.', '').replace('Equity.', '').replace('FX.', '');
+
+        return `<div class="feed-result-item" data-feed-id="${feed.id}" data-symbol="${displaySymbol}">
+          <span class="feed-result-symbol">${displaySymbol}</span>
+          <span class="feed-result-class">${assetType}</span>
+        </div>`;
+      }).join('');
+
+      // Add click handlers
+      feedResultsEl.querySelectorAll('.feed-result-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const feedId = item.dataset.feedId;
+          const symbol = item.dataset.symbol;
+          selectFeed(feedId, symbol);
+          feedResultsEl.classList.remove('open');
+          feedSearchEl.value = '';
+          state.searchQuery = '';
+        });
+      });
+    }
+
+    function selectFeed(feedId, symbol) {
+      state.currentFeed = feedId;
+      state.currentFeedSymbol = symbol;
+      selectedFeedDisplay.textContent = symbol;
+      connectToFeed(feedId);
+
+      // Reset obstacles when changing feed
+      if (state.isPlaying) {
+        state.obstacles = [];
+      }
+    }
+
+    function resizeCanvas() {
+      const container = canvas.parentElement;
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+      state.width = canvas.width;
+      state.height = canvas.height;
+      state.playerY = state.height / 2;
+    }
+
+    // ============================================
+    // PYTH PRICE FEED CONNECTION
+    // ============================================
+
+    function connectToFeed(feedId) {
+      // Close existing connection
+      if (state.eventSource) {
+        state.eventSource.close();
+      }
+
+      state.connected = false;
+      updateConnectionStatus(false, 'Connecting...');
+      state.priceHistory = [];
+      updatePriceHistoryDisplay();
+
+      // Use Server-Sent Events for streaming
+      const streamUrl = `${HERMES_ENDPOINT}/v2/updates/price/stream?ids[]=${feedId}&parsed=true`;
+      
+      state.eventSource = new EventSource(streamUrl);
+
+      state.eventSource.onopen = () => {
+        state.connected = true;
+        updateConnectionStatus(true, 'Live');
+      };
+
+      state.eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.parsed && data.parsed.length > 0) {
+            const priceData = data.parsed[0];
+            processPriceUpdate(priceData);
+          }
+        } catch (e) {
+          console.error('Error parsing price data:', e);
+        }
+      };
+
+      state.eventSource.onerror = (error) => {
+        console.error('SSE Error:', error);
+        state.connected = false;
+        updateConnectionStatus(false, 'Reconnecting...');
+        
+        // Reconnect after delay
+        setTimeout(() => {
+          if (!state.connected && state.currentFeed) {
+            connectToFeed(state.currentFeed);
+          }
+        }, 3000);
+      };
+    }
+
+    function processPriceUpdate(priceData) {
+      const price = parseFloat(priceData.price.price) * Math.pow(10, priceData.price.expo);
+      const confidence = parseFloat(priceData.price.conf) * Math.pow(10, priceData.price.expo);
+      
+      state.previousPrice = state.currentPrice;
+      state.currentPrice = price;
+      
+      // Add to history
+      const entry = {
+        price: price,
+        confidence: confidence,
+        timestamp: new Date(),
+        change: state.previousPrice ? price - state.previousPrice : 0
+      };
+      
+      state.priceHistory.unshift(entry);
+      if (state.priceHistory.length > 50) {
+        state.priceHistory.pop();
+      }
+
+      // Update UI
+      updatePriceDisplay(price, entry.change);
+      updatePriceHistoryDisplay();
+      
+      // Generate obstacle from price if playing
+      if (state.isPlaying && state.priceHistory.length >= 2) {
+        // Use price change to influence obstacle gap position
+        const priceChange = entry.change;
+        const normalizedChange = Math.max(-1, Math.min(1, priceChange / (price * 0.001)));
+        
+        // Queue this for obstacle generation
+        state.lastPriceNormalized = normalizedChange;
+      }
+    }
+
+    function updateConnectionStatus(connected, text) {
+      statusDot.classList.toggle('connected', connected);
+      statusText.textContent = text;
+    }
+
+    function updatePriceDisplay(price, change) {
+      // Format price based on magnitude
+      let formatted;
+      if (price >= 1000) {
+        formatted = price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      } else if (price >= 1) {
+        formatted = price.toFixed(4);
+      } else {
+        formatted = price.toFixed(6);
+      }
+      
+      currentPriceEl.textContent = '$' + formatted;
+      
+      // Price change
+      if (change !== 0) {
+        const changePercent = ((change / (price - change)) * 100).toFixed(3);
+        const isUp = change > 0;
+        priceChangeEl.textContent = `${isUp ? '▲' : '▼'} ${isUp ? '+' : ''}${changePercent}%`;
+        priceChangeEl.className = `price-change ${isUp ? 'up' : 'down'}`;
+      }
+    }
+
+    function updatePriceHistoryDisplay() {
+      if (state.priceHistory.length === 0) {
+        priceHistoryEl.innerHTML = '<div class="loading" style="text-align: center; color: var(--text-secondary);">Waiting for data...</div>';
+        return;
+      }
+
+      priceHistoryEl.innerHTML = state.priceHistory.slice(0, 20).map(entry => {
+        const time = entry.timestamp.toLocaleTimeString();
+        const price = entry.price >= 1 ? entry.price.toFixed(2) : entry.price.toFixed(6);
+        const direction = entry.change >= 0 ? 'up' : 'down';
+        return `<div class="price-entry ${direction}">
+          <span class="time">${time}</span>
+          <span class="price">$${price}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ============================================
+    // GAME LOGIC
+    // ============================================
+
+    function startGame() {
+      state.isPlaying = true;
+      state.score = 0;
+      state.distance = 0;
+      state.playerY = state.height / 2;
+      state.playerVelocity = 0;
+      state.obstacles = [];
+      state.obstacleTimer = 0;
+      
+      startOverlay.classList.add('hidden');
+      gameOverOverlay.classList.add('hidden');
+      
+      updateScore();
+    }
+
+    async function gameOver() {
+      state.isPlaying = false;
+
+      // Update local high score
+      if (state.score > state.highScore) {
+        state.highScore = state.score;
+        localStorage.setItem('pythFlappyHighScore', state.highScore.toString());
+        highScoreEl.textContent = state.highScore;
+      }
+
+      finalScoreEl.textContent = state.score;
+      finalDistanceEl.textContent = Math.floor(state.distance) + 'm';
+
+      // Handle score submission UI
+      const submitSection = document.getElementById('submitScoreSection');
+      const connectPrompt = document.getElementById('connectPrompt');
+      const submitStatus = document.getElementById('submitStatus');
+
+      if (state.wallet.connected) {
+        // Show submission status
+        submitSection.style.display = 'block';
+        connectPrompt.style.display = 'none';
+        submitStatus.textContent = 'Submitting score...';
+        submitStatus.className = 'submit-status';
+
+        // Submit score to Supabase
+        const success = await submitScore(
+          state.score,
+          state.distance,
+          state.currentFeedSymbol
+        );
+
+        if (success) {
+          submitStatus.textContent = 'Score submitted to leaderboard!';
+          submitStatus.className = 'submit-status success';
+          fetchPersonalBest();
+        } else {
+          submitStatus.textContent = 'Failed to submit score';
+          submitStatus.className = 'submit-status error';
+        }
+      } else {
+        // Show connect wallet prompt
+        submitSection.style.display = 'none';
+        connectPrompt.style.display = 'block';
+      }
+
+      gameOverOverlay.classList.remove('hidden');
+    }
+
+    function handleInput(e) {
+      if (e.type === 'keydown' && e.code !== 'Space') return;
+      if (e.type === 'keydown') e.preventDefault();
+      
+      if (state.isPlaying) {
+        state.playerVelocity = JUMP_FORCE;
+      }
+    }
+
+    function updateScore() {
+      scoreEl.textContent = state.score;
+      distanceEl.textContent = Math.floor(state.distance) + 'm';
+    }
+
+    // ============================================
+    // GAME LOOP
+    // ============================================
+
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function update() {
+      if (!state.isPlaying) return;
+
+      // Physics
+      state.playerVelocity += GRAVITY;
+      state.playerY += state.playerVelocity;
+      state.distance += OBSTACLE_SPEED * 0.1;
+
+      // Bounds check
+      if (state.playerY < PLAYER_SIZE / 2 || state.playerY > state.height - PLAYER_SIZE / 2) {
+        gameOver();
+        return;
+      }
+
+      // Generate obstacles
+      state.obstacleTimer++;
+      if (state.obstacleTimer >= OBSTACLE_INTERVAL) {
+        state.obstacleTimer = 0;
+        generateObstacle();
+      }
+
+      // Update obstacles
+      for (let i = state.obstacles.length - 1; i >= 0; i--) {
+        const obs = state.obstacles[i];
+        obs.x -= OBSTACLE_SPEED;
+
+        // Score when passing
+        if (!obs.passed && obs.x + OBSTACLE_WIDTH < state.width / 4) {
+          obs.passed = true;
+          state.score++;
+          updateScore();
+        }
+
+        // Remove off-screen
+        if (obs.x + OBSTACLE_WIDTH < 0) {
+          state.obstacles.splice(i, 1);
+          continue;
+        }
+
+        // Collision detection
+        const playerX = state.width / 4;
+        const playerLeft = playerX - PLAYER_SIZE / 2;
+        const playerRight = playerX + PLAYER_SIZE / 2;
+        const playerTop = state.playerY - PLAYER_SIZE / 2;
+        const playerBottom = state.playerY + PLAYER_SIZE / 2;
+
+        if (playerRight > obs.x && playerLeft < obs.x + OBSTACLE_WIDTH) {
+          if (playerTop < obs.gapY - OBSTACLE_GAP / 2 || playerBottom > obs.gapY + OBSTACLE_GAP / 2) {
+            gameOver();
+            return;
+          }
+        }
+      }
+    }
+
+    function generateObstacle() {
+      // Use price data to determine gap position - same calculation as green price line
+      let gapY = state.height / 2;
+
+      if (state.priceHistory.length >= 2) {
+        // Use same normalization as drawPriceLine for consistency
+        const prices = state.priceHistory.slice(0, 30);
+        const minPrice = Math.min(...prices.map(p => p.price));
+        const maxPrice = Math.max(...prices.map(p => p.price));
+        const priceRange = maxPrice - minPrice || 1;
+
+        // Normalize current price between min/max (same as green line)
+        const normalized = (state.currentPrice - minPrice) / priceRange;
+
+        // Map to screen position using same formula as drawPriceLine
+        gapY = state.height - (normalized * state.height * 0.6 + state.height * 0.2);
+      } else {
+        // Random if no price data
+        gapY = OBSTACLE_GAP / 2 + 50 + Math.random() * (state.height - OBSTACLE_GAP - 100);
+      }
+
+      // Clamp gap position
+      gapY = Math.max(OBSTACLE_GAP / 2 + 30, Math.min(state.height - OBSTACLE_GAP / 2 - 30, gapY));
+
+      state.obstacles.push({
+        x: state.width,
+        gapY: gapY,
+        passed: false,
+        priceAtCreation: state.currentPrice
+      });
+    }
+
+    // ============================================
+    // RENDERING
+    // ============================================
+
+    function render() {
+      // Clear
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillRect(0, 0, state.width, state.height);
+
+      // Grid background
+      drawGrid();
+
+      // Price line visualization (background)
+      drawPriceLine();
+
+      // Obstacles
+      drawObstacles();
+
+      // Player
+      drawPlayer();
+
+      // Idle state visualization
+      if (!state.isPlaying) {
+        drawIdleVisualization();
+      }
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = 'rgba(139, 92, 246, 0.1)';
+      ctx.lineWidth = 1;
+
+      // Vertical lines
+      for (let x = 0; x < state.width; x += 60) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, state.height);
+        ctx.stroke();
+      }
+
+      // Horizontal lines
+      for (let y = 0; y < state.height; y += 60) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(state.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function drawPriceLine() {
+      if (state.priceHistory.length < 2) return;
+
+      const prices = state.priceHistory.slice(0, 30);
+      const minPrice = Math.min(...prices.map(p => p.price));
+      const maxPrice = Math.max(...prices.map(p => p.price));
+      const priceRange = maxPrice - minPrice || 1;
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
+      ctx.lineWidth = 2;
+
+      prices.forEach((entry, i) => {
+        const x = state.width - (i * (state.width / 30));
+        const normalized = (entry.price - minPrice) / priceRange;
+        const y = state.height - (normalized * state.height * 0.6 + state.height * 0.2);
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+
+      ctx.stroke();
+
+      // Glow effect
+      ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+    }
+
+    function drawObstacles() {
+      state.obstacles.forEach(obs => {
+        // Top obstacle
+        const gradient1 = ctx.createLinearGradient(obs.x, 0, obs.x + OBSTACLE_WIDTH, 0);
+        gradient1.addColorStop(0, '#8b5cf6');
+        gradient1.addColorStop(1, '#6d28d9');
+        
+        ctx.fillStyle = gradient1;
+        ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - OBSTACLE_GAP / 2);
+        
+        // Bottom obstacle
+        ctx.fillStyle = gradient1;
+        ctx.fillRect(obs.x, obs.gapY + OBSTACLE_GAP / 2, OBSTACLE_WIDTH, state.height - obs.gapY - OBSTACLE_GAP / 2);
+
+        // Glow edges
+        ctx.strokeStyle = 'rgba(139, 92, 246, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - OBSTACLE_GAP / 2);
+        ctx.strokeRect(obs.x, obs.gapY + OBSTACLE_GAP / 2, OBSTACLE_WIDTH, state.height - obs.gapY - OBSTACLE_GAP / 2);
+
+        // Price label
+        if (obs.priceAtCreation) {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.font = '10px "Space Mono"';
+          ctx.textAlign = 'center';
+          const priceLabel = obs.priceAtCreation >= 1 ? 
+            '$' + obs.priceAtCreation.toFixed(0) : 
+            '$' + obs.priceAtCreation.toFixed(4);
+          ctx.fillText(priceLabel, obs.x + OBSTACLE_WIDTH / 2, obs.gapY);
+        }
+      });
+    }
+
+    function drawPlayer() {
+      const x = state.width / 4;
+      const y = state.isPlaying ? state.playerY : state.height / 2 + Math.sin(Date.now() / 500) * 10;
+
+      // Glow
+      ctx.shadowColor = '#00ff88';
+      ctx.shadowBlur = 20;
+
+      // Player body (rocket/ship shape)
+      ctx.fillStyle = '#00ff88';
+      ctx.beginPath();
+      ctx.moveTo(x + PLAYER_SIZE / 2, y);
+      ctx.lineTo(x - PLAYER_SIZE / 2, y - PLAYER_SIZE / 3);
+      ctx.lineTo(x - PLAYER_SIZE / 3, y);
+      ctx.lineTo(x - PLAYER_SIZE / 2, y + PLAYER_SIZE / 3);
+      ctx.closePath();
+      ctx.fill();
+
+      // Trail effect when moving
+      if (state.isPlaying && state.playerVelocity < 0) {
+        ctx.fillStyle = 'rgba(0, 255, 136, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(x - PLAYER_SIZE / 2, y);
+        ctx.lineTo(x - PLAYER_SIZE, y - 5);
+        ctx.lineTo(x - PLAYER_SIZE * 1.5, y);
+        ctx.lineTo(x - PLAYER_SIZE, y + 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.shadowBlur = 0;
+    }
+
+    function drawIdleVisualization() {
+      // Animated price visualization when not playing
+      if (state.priceHistory.length > 0) {
+        const pulse = Math.sin(Date.now() / 300) * 0.5 + 0.5;
+        
+        ctx.fillStyle = `rgba(139, 92, 246, ${0.1 + pulse * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(state.width / 2, state.height / 2, 100 + pulse * 20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Start the app
+    init();
+  </script>
+</body>
+</html>

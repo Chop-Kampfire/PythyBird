@@ -1787,9 +1787,12 @@
     function handleInput(e) {
       if (e.type === 'keydown' && e.code !== 'Space') return;
       if (e.type === 'keydown') e.preventDefault();
-      
+
       if (state.isPlaying) {
         state.playerVelocity = JUMP_FORCE;
+      } else if (!gameOverOverlay.classList.contains('hidden')) {
+        // Restart game from game over screen
+        startGame();
       }
     }
 

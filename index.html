@@ -837,6 +837,31 @@
       color: var(--text-secondary);
       margin-bottom: 0.5rem;
     }
+
+    /* Player Count */
+    .player-count {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(139, 92, 246, 0.1);
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    .player-count-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--accent-purple);
+    }
+
+    .player-count-label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
   </style>
 </head>
 <body>
@@ -869,6 +894,10 @@
       <div class="connection-status">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusText">Connecting...</span>
+      </div>
+      <div class="player-count">
+        <span class="player-count-value" id="playerCount">--</span>
+        <span class="player-count-label">players</span>
       </div>
       <div class="wallet-section">
         <span class="wallet-address" id="walletAddress" style="display: none;"></span>
@@ -1230,6 +1259,7 @@
 
         console.log('Score submitted successfully');
         await fetchLeaderboard();
+        await fetchPlayerCount();
         return true;
       } catch (error) {
         console.error('Failed to submit score:', error);
@@ -1285,6 +1315,29 @@
       } catch (error) {
         console.error('Failed to fetch personal best:', error);
         return null;
+      }
+    }
+
+    async function fetchPlayerCount() {
+      try {
+        // Get distinct wallet addresses count
+        const query = 'high_scores?select=wallet_address';
+        const results = await supabaseRequest(query, {
+          prefer: 'return=representation'
+        });
+
+        if (results) {
+          // Count unique wallet addresses
+          const uniqueWallets = new Set(results.map(r => r.wallet_address));
+          const count = uniqueWallets.size;
+          document.getElementById('playerCount').textContent = count.toLocaleString();
+          return count;
+        }
+        return 0;
+      } catch (error) {
+        console.error('Failed to fetch player count:', error);
+        document.getElementById('playerCount').textContent = '--';
+        return 0;
       }
     }
 
@@ -1352,8 +1405,9 @@
       // Fetch all feeds and connect to default
       fetchAllFeeds();
 
-      // Fetch initial leaderboard
+      // Fetch initial leaderboard and player count
       fetchLeaderboard();
+      fetchPlayerCount();
 
       // Start render loop
       requestAnimationFrame(gameLoop);

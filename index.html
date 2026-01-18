@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     * {
       margin: 0;
@@ -862,6 +863,473 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+
+    /* Multiplayer Menu Styles */
+    .menu-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+    }
+
+    .menu-btn {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
+      padding: 1rem 2rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 250px;
+    }
+
+    .menu-btn:hover {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: var(--accent-purple);
+      transform: translateY(-2px);
+    }
+
+    .menu-btn.primary {
+      background: linear-gradient(135deg, var(--accent-purple), #6d28d9);
+      border: none;
+      color: white;
+    }
+
+    .menu-btn.primary:hover {
+      box-shadow: 0 10px 30px rgba(139, 92, 246, 0.3);
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+    }
+
+    .modal-backdrop.hidden {
+      display: none;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 8px;
+      padding: 2rem;
+      min-width: 350px;
+      max-width: 90%;
+    }
+
+    .modal h3 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.25rem;
+      color: var(--accent-purple);
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .modal input[type="text"] {
+      width: 100%;
+      background: var(--bg-dark);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-primary);
+      padding: 0.75rem 1rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      outline: none;
+    }
+
+    .modal input[type="text"]:focus {
+      border-color: var(--accent-purple);
+    }
+
+    .modal input[type="text"]::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .modal-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .modal-checkbox input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent-purple);
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal-btn.primary {
+      background: linear-gradient(135deg, var(--accent-purple), #6d28d9);
+      border: none;
+      color: white;
+    }
+
+    .modal-btn.secondary {
+      background: transparent;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--text-secondary);
+    }
+
+    .modal-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    /* Lobby Browser Styles */
+    .lobby-list {
+      max-height: 300px;
+      overflow-y: auto;
+      margin: 1rem 0;
+    }
+
+    .lobby-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: rgba(139, 92, 246, 0.05);
+      border: 1px solid rgba(139, 92, 246, 0.1);
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    .lobby-item:hover {
+      background: rgba(139, 92, 246, 0.1);
+      border-color: rgba(139, 92, 246, 0.3);
+    }
+
+    .lobby-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .lobby-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+
+    .lobby-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+    }
+
+    .lobby-players {
+      color: var(--accent-green);
+    }
+
+    .join-btn {
+      background: linear-gradient(135deg, var(--accent-green), #00cc6a);
+      border: none;
+      color: #1a1a2e;
+      padding: 0.5rem 1rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .join-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
+    }
+
+    .no-lobbies {
+      text-align: center;
+      color: var(--text-secondary);
+      padding: 2rem;
+      font-size: 0.85rem;
+    }
+
+    /* Waiting Room Styles */
+    .lobby-code-display {
+      text-align: center;
+      margin: 1rem 0;
+    }
+
+    .lobby-code-display .label {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .lobby-code-display .code {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent-purple);
+      letter-spacing: 0.2em;
+      margin-top: 0.25rem;
+    }
+
+    .player-slots {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin: 1.5rem 0;
+      max-width: 400px;
+    }
+
+    .player-slot {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(139, 92, 246, 0.05);
+      border: 2px solid rgba(139, 92, 246, 0.2);
+      border-radius: 4px;
+      min-height: 60px;
+    }
+
+    .player-slot.occupied {
+      border-color: var(--accent-purple);
+    }
+
+    .player-slot .slot-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .player-slot .slot-info {
+      flex: 1;
+    }
+
+    .player-slot .slot-address {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-primary);
+    }
+
+    .player-slot .slot-waiting {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .player-slot .host-badge {
+      font-size: 0.6rem;
+      background: var(--accent-purple);
+      color: white;
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .waiting-info {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      margin: 1rem 0;
+    }
+
+    /* Results Screen Styles */
+    .results-podium {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 0.5rem;
+      margin: 2rem 0;
+    }
+
+    .podium-place {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+      border-radius: 4px;
+      min-width: 100px;
+    }
+
+    .podium-place.first {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.2));
+      border: 2px solid gold;
+      order: 2;
+      padding-bottom: 2rem;
+    }
+
+    .podium-place.second {
+      background: linear-gradient(135deg, rgba(192, 192, 192, 0.2), rgba(160, 160, 160, 0.2));
+      border: 2px solid silver;
+      order: 1;
+    }
+
+    .podium-place.third {
+      background: linear-gradient(135deg, rgba(205, 127, 50, 0.2), rgba(139, 69, 19, 0.2));
+      border: 2px solid #cd7f32;
+      order: 3;
+    }
+
+    .podium-place .place-num {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .podium-place.first .place-num { color: gold; }
+    .podium-place.second .place-num { color: silver; }
+    .podium-place.third .place-num { color: #cd7f32; }
+
+    .podium-place .place-address {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      margin: 0.5rem 0;
+    }
+
+    .podium-place .place-score {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      color: var(--accent-green);
+    }
+
+    .crown {
+      font-size: 1.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Countdown Overlay */
+    .countdown-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(10, 10, 15, 0.8);
+      z-index: 15;
+    }
+
+    .countdown-overlay.hidden {
+      display: none;
+    }
+
+    .countdown-number {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 8rem;
+      font-weight: 900;
+      color: var(--accent-purple);
+      text-shadow: 0 0 50px rgba(139, 92, 246, 0.5);
+      animation: countdownPulse 1s ease-out;
+    }
+
+    .countdown-number.go {
+      color: var(--accent-green);
+      text-shadow: 0 0 50px rgba(0, 255, 136, 0.5);
+    }
+
+    @keyframes countdownPulse {
+      0% { transform: scale(1.5); opacity: 0; }
+      50% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.8); opacity: 0; }
+    }
+
+    /* Elimination Toast */
+    .elimination-toast {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 51, 102, 0.9);
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      z-index: 100;
+      animation: toastSlide 3s ease-out forwards;
+    }
+
+    @keyframes toastSlide {
+      0% { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+      10% { transform: translateX(-50%) translateY(0); opacity: 1; }
+      90% { transform: translateX(-50%) translateY(0); opacity: 1; }
+      100% { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+    }
+
+    /* Multiplayer player indicators */
+    .mp-player-list {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 5;
+    }
+
+    .mp-player-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: 4px;
+      font-size: 0.7rem;
+    }
+
+    .mp-player-indicator.eliminated {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+
+    .mp-player-indicator .color-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .mp-player-indicator .mp-address {
+      font-family: 'Space Mono', monospace;
+      color: var(--text-secondary);
+    }
+
+    .mp-player-indicator .mp-score {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--accent-green);
+      margin-left: auto;
+    }
   </style>
 </head>
 <body>
@@ -929,13 +1397,60 @@
 
         <div class="game-container">
           <canvas id="gameCanvas"></canvas>
-          
-          <div class="overlay" id="startOverlay">
+
+          <!-- Main Menu -->
+          <div class="overlay" id="menuOverlay">
             <h2>PythyBird</h2>
-            <p>Navigate through obstacles generated by real-time Pyth Network price feeds. The market moves - can you keep up?</p>
-            <button class="start-btn" id="startBtn">START TRADING</button>
+            <p>Navigate through obstacles generated by real-time Pyth Network price feeds. Race against others - last one standing wins!</p>
+            <div class="menu-buttons">
+              <button class="menu-btn primary" id="soloPlayBtn">SOLO PRACTICE</button>
+              <button class="menu-btn" id="createLobbyBtn">CREATE RACE</button>
+              <button class="menu-btn" id="browseLobbyBtn">FIND RACE</button>
+              <button class="menu-btn" id="joinCodeBtn">JOIN WITH CODE</button>
+            </div>
+            <div id="menuWalletPrompt" style="margin-top: 1rem;">
+              <p style="font-size: 0.75rem; color: var(--text-secondary);">Connect wallet to race with others</p>
+            </div>
           </div>
 
+          <!-- Lobby Browser -->
+          <div class="overlay hidden" id="lobbyBrowserOverlay">
+            <h2>FIND A RACE</h2>
+            <div class="lobby-list" id="lobbyList">
+              <div class="no-lobbies">Loading lobbies...</div>
+            </div>
+            <div class="modal-buttons">
+              <button class="modal-btn secondary" id="browserBackBtn">BACK</button>
+              <button class="modal-btn primary" id="browserRefreshBtn">REFRESH</button>
+            </div>
+          </div>
+
+          <!-- Waiting Room -->
+          <div class="overlay hidden" id="waitingRoomOverlay">
+            <h2 id="waitingLobbyName">RACE LOBBY</h2>
+            <div class="lobby-code-display">
+              <div class="label">Share this code</div>
+              <div class="code" id="waitingLobbyCode">------</div>
+            </div>
+            <div class="player-slots" id="playerSlots"></div>
+            <p class="waiting-info">Racing on: <span id="waitingFeedSymbol">BTC/USD</span></p>
+            <div class="modal-buttons">
+              <button class="modal-btn secondary" id="leaveLobbyBtn">LEAVE</button>
+              <button class="modal-btn primary hidden" id="startRaceBtn">START RACE</button>
+            </div>
+          </div>
+
+          <!-- Race Results -->
+          <div class="overlay hidden" id="raceResultsOverlay">
+            <h2>RACE FINISHED</h2>
+            <div class="results-podium" id="resultsPodium"></div>
+            <div class="modal-buttons">
+              <button class="modal-btn secondary" id="resultsMenuBtn">MAIN MENU</button>
+              <button class="modal-btn primary" id="raceAgainBtn">RACE AGAIN</button>
+            </div>
+          </div>
+
+          <!-- Solo Game Over (existing) -->
           <div class="overlay hidden" id="gameOverOverlay">
             <h2>LIQUIDATED</h2>
             <div class="game-over-stats">
@@ -950,6 +1465,7 @@
             </div>
             <p>The market got you. Try again?</p>
             <button class="start-btn" id="restartBtn">TRADE AGAIN</button>
+            <button class="start-btn" id="soloMenuBtn" style="margin-top: 0.5rem; background: transparent; border: 1px solid rgba(139,92,246,0.3);">MAIN MENU</button>
             <div class="submit-score-section" id="submitScoreSection" style="display: none;">
               <p class="submit-status" id="submitStatus">Submitting score...</p>
             </div>
@@ -957,6 +1473,43 @@
               <p>Connect your Solana wallet to submit score to leaderboard</p>
               <p style="font-size: 0.65rem; color: var(--accent-green); margin-bottom: 0.5rem;">No transactions required. No funds at risk.</p>
               <button class="wallet-btn small" id="gameOverWalletBtn">CONNECT WALLET</button>
+            </div>
+          </div>
+
+          <!-- Countdown -->
+          <div class="countdown-overlay hidden" id="countdownOverlay">
+            <div class="countdown-number" id="countdownNumber">3</div>
+          </div>
+
+          <!-- Multiplayer Player List (shown during race) -->
+          <div class="mp-player-list hidden" id="mpPlayerList"></div>
+        </div>
+
+        <!-- Create Lobby Modal -->
+        <div class="modal-backdrop hidden" id="createLobbyModal">
+          <div class="modal">
+            <h3>CREATE RACE</h3>
+            <input type="text" id="lobbyNameInput" placeholder="Race Name" maxlength="30">
+            <label class="modal-checkbox">
+              <input type="checkbox" id="privateToggle">
+              Private Lobby (code only)
+            </label>
+            <p style="font-size: 0.75rem; color: var(--text-secondary);">Racing on: <span id="createFeedSymbol" style="color: var(--accent-green);">BTC/USD</span></p>
+            <div class="modal-buttons">
+              <button class="modal-btn secondary" id="createCancelBtn">CANCEL</button>
+              <button class="modal-btn primary" id="createSubmitBtn">CREATE</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Join Code Modal -->
+        <div class="modal-backdrop hidden" id="joinCodeModal">
+          <div class="modal">
+            <h3>JOIN PRIVATE RACE</h3>
+            <input type="text" id="lobbyCodeInput" placeholder="Enter 6-character code" maxlength="6" style="text-transform: uppercase; text-align: center; font-size: 1.5rem; letter-spacing: 0.2em;">
+            <div class="modal-buttons">
+              <button class="modal-btn secondary" id="joinCancelBtn">CANCEL</button>
+              <button class="modal-btn primary" id="joinSubmitBtn">JOIN</button>
             </div>
           </div>
         </div>
@@ -1065,7 +1618,33 @@
 
       // Timing (for consistent physics across frame rates)
       lastTime: 0,
-      deltaTime: 0
+      deltaTime: 0,
+
+      // Multiplayer state
+      multiplayer: {
+        enabled: false,
+        isHost: false,
+        lobbyId: null,
+        lobbyCode: null,
+        lobbyName: null,
+        hostWallet: null,
+        players: [],
+        remotePlayers: [],
+        gamePhase: 'menu',
+        channel: null,
+        supabase: null,
+        lastPositionSync: 0,
+        obstacleIdCounter: 0,
+        countdown: 0
+      },
+
+      // Local player state (for multiplayer)
+      localPlayer: {
+        slot: 0,
+        alive: true,
+        score: 0,
+        distance: 0
+      }
     };
 
     // Game Constants
@@ -1076,6 +1655,17 @@
     const OBSTACLE_GAP = 150;
     const OBSTACLE_SPEED = 3;
     const OBSTACLE_INTERVAL = 120; // frames
+
+    // Multiplayer Constants
+    const PLAYER_COLORS = [
+      { main: '#00ff88', glow: 'rgba(0, 255, 136, 0.3)', name: 'Green' },
+      { main: '#ff6b6b', glow: 'rgba(255, 107, 107, 0.3)', name: 'Red' },
+      { main: '#4ecdc4', glow: 'rgba(78, 205, 196, 0.3)', name: 'Cyan' },
+      { main: '#ffe66d', glow: 'rgba(255, 230, 109, 0.3)', name: 'Yellow' }
+    ];
+    const PLAYER_X_POSITIONS = [0.15, 0.20, 0.25, 0.30];
+    const POSITION_SYNC_INTERVAL = 100; // 10Hz
+    const INTERPOLATION_BUFFER = 100;
 
     // DOM Elements
     const canvas = document.getElementById('gameCanvas');

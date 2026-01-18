@@ -999,6 +999,34 @@
       color: white;
     }
 
+    .modal-btn.ready {
+      background: transparent;
+      border: 2px solid var(--accent-green);
+      color: var(--accent-green);
+      transition: all 0.2s ease;
+    }
+
+    .modal-btn.ready:hover {
+      background: rgba(0, 255, 136, 0.1);
+    }
+
+    .modal-btn.ready.is-ready {
+      background: var(--accent-green);
+      color: #0a0a0f;
+      font-weight: bold;
+    }
+
+    .ready-status {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin: 0.5rem 0;
+    }
+
+    .ready-status.all-ready {
+      color: var(--accent-green);
+      font-weight: bold;
+    }
+
     .modal-btn.secondary {
       background: transparent;
       border: 1px solid rgba(139, 92, 246, 0.3);
@@ -1123,6 +1151,28 @@
 
     .player-slot.occupied {
       border-color: var(--accent-purple);
+    }
+
+    .player-slot.ready {
+      border-color: var(--accent-green);
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+    }
+
+    .player-slot .ready-badge {
+      font-size: 0.6rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      margin-left: 0.5rem;
+    }
+
+    .player-slot .ready-badge.is-ready {
+      background: var(--accent-green);
+      color: #0a0a0f;
+    }
+
+    .player-slot .ready-badge.afk {
+      background: rgba(255, 107, 107, 0.3);
+      color: #ff6b6b;
     }
 
     .player-slot .slot-color {
@@ -1434,8 +1484,10 @@
             </div>
             <div class="player-slots" id="playerSlots"></div>
             <p class="waiting-info">Racing on: <span id="waitingFeedSymbol">BTC/USD</span></p>
+            <p class="ready-status" id="readyStatus">Waiting for players to ready up...</p>
             <div class="modal-buttons">
               <button class="modal-btn secondary" id="leaveLobbyBtn">LEAVE</button>
+              <button class="modal-btn ready" id="readyBtn">READY</button>
               <button class="modal-btn primary hidden" id="startRaceBtn">START RACE</button>
             </div>
           </div>
@@ -1651,7 +1703,8 @@
         slot: 0,
         alive: true,
         score: 0,
-        distance: 0
+        distance: 0,
+        ready: false
       }
     };
 
@@ -2241,6 +2294,14 @@
       state.localPlayer.alive = true;
       state.localPlayer.score = 0;
       state.localPlayer.distance = 0;
+      state.localPlayer.ready = false;
+
+      // Reset ready button appearance
+      const readyBtn = document.getElementById('readyBtn');
+      if (readyBtn) {
+        readyBtn.classList.remove('is-ready');
+        readyBtn.textContent = 'READY';
+      }
     }
 
     async function fetchPublicLobbies() {
@@ -2301,7 +2362,8 @@
           await channel.track({
             wallet: state.wallet.publicKey,
             slot: state.localPlayer.slot,
-            displayName: state.wallet.displayAddress
+            displayName: state.wallet.displayAddress,
+            ready: state.localPlayer.ready
           });
           refreshLobbyPlayers();
         }
@@ -2317,13 +2379,15 @@
           players.push({
             wallet: wallet,
             slot: presences[0].slot,
-            displayName: presences[0].displayName
+            displayName: presences[0].displayName,
+            ready: presences[0].ready || false
           });
         }
       }
       state.multiplayer.players = players;
       renderPlayerSlots();
       updateStartButton();
+      updateReadyStatus();
     }
 
     async function refreshLobbyPlayers() {
@@ -2546,14 +2610,19 @@
         const player = state.multiplayer.players.find(p => p.slot === i);
         const color = PLAYER_COLORS[i];
         const isHost = player && player.wallet === state.multiplayer.hostWallet;
+        const isReady = player && player.ready;
+        const slotClass = player ? (isReady ? 'player-slot occupied ready' : 'player-slot occupied') : 'player-slot';
 
         if (player) {
+          const readyBadge = isReady
+            ? '<span class="ready-badge is-ready">READY</span>'
+            : '<span class="ready-badge afk">NOT READY</span>';
           html += `
-            <div class="player-slot occupied">
+            <div class="${slotClass}">
               <div class="slot-color" style="background: ${color.main}"></div>
               <div class="slot-info">
-                <div class="slot-address">${truncateAddress(player.wallet)}</div>
-                ${isHost ? '<span class="host-badge">HOST</span>' : ''}
+                <div class="slot-address">${truncateAddress(player.wallet)}${isHost ? ' <span class="host-badge">HOST</span>' : ''}</div>
+                ${readyBadge}
               </div>
             </div>
           `;
@@ -2575,10 +2644,58 @@
       const startBtn = document.getElementById('startRaceBtn');
       if (!startBtn) return;
 
-      if (state.multiplayer.isHost && state.multiplayer.players.length >= 2) {
+      const allReady = state.multiplayer.players.length >= 2 &&
+        state.multiplayer.players.every(p => p.ready);
+
+      if (state.multiplayer.isHost && state.multiplayer.players.length >= 2 && allReady) {
         startBtn.classList.remove('hidden');
       } else {
         startBtn.classList.add('hidden');
+      }
+    }
+
+    function updateReadyStatus() {
+      const statusEl = document.getElementById('readyStatus');
+      if (!statusEl) return;
+
+      const totalPlayers = state.multiplayer.players.length;
+      const readyPlayers = state.multiplayer.players.filter(p => p.ready).length;
+
+      if (totalPlayers < 2) {
+        statusEl.textContent = 'Waiting for more players to join...';
+        statusEl.classList.remove('all-ready');
+      } else if (readyPlayers === totalPlayers) {
+        statusEl.textContent = 'All players ready! Host can start the race.';
+        statusEl.classList.add('all-ready');
+      } else {
+        statusEl.textContent = `${readyPlayers}/${totalPlayers} players ready`;
+        statusEl.classList.remove('all-ready');
+      }
+    }
+
+    async function toggleReady() {
+      state.localPlayer.ready = !state.localPlayer.ready;
+
+      // Update button appearance
+      const readyBtn = document.getElementById('readyBtn');
+      if (readyBtn) {
+        if (state.localPlayer.ready) {
+          readyBtn.classList.add('is-ready');
+          readyBtn.textContent = 'READY!';
+        } else {
+          readyBtn.classList.remove('is-ready');
+          readyBtn.textContent = 'READY';
+        }
+      }
+
+      // Update presence to broadcast ready status
+      if (state.multiplayer.channel) {
+        await state.multiplayer.channel.track({
+          wallet: state.wallet.publicKey,
+          slot: state.localPlayer.slot,
+          displayName: state.wallet.displayAddress,
+          ready: state.localPlayer.ready
+        });
       }
     }
 
@@ -2969,6 +3086,10 @@
         startMultiplayerRace();
       });
 
+      document.getElementById('readyBtn')?.addEventListener('click', () => {
+        toggleReady();
+      });
+
       document.getElementById('leaveLobbyBtn')?.addEventListener('click', async () => {
         await leaveLobby();
         showMainMenu();
@@ -2987,11 +3108,30 @@
         state.multiplayer.gamePhase = 'waiting';
         state.localPlayer.alive = true;
         state.localPlayer.score = 0;
+        state.localPlayer.ready = false;
         state.multiplayer.remotePlayers.forEach(p => {
           p.alive = true;
           p.score = 0;
           p.positionBuffer = [];
         });
+
+        // Reset ready button appearance
+        const readyBtn = document.getElementById('readyBtn');
+        if (readyBtn) {
+          readyBtn.classList.remove('is-ready');
+          readyBtn.textContent = 'READY';
+        }
+
+        // Update presence with reset ready status
+        if (state.multiplayer.channel) {
+          await state.multiplayer.channel.track({
+            wallet: state.wallet.publicKey,
+            slot: state.localPlayer.slot,
+            displayName: state.wallet.displayAddress,
+            ready: false
+          });
+        }
+
         showWaitingRoom();
       });
 

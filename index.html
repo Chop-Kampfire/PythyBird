@@ -2649,36 +2649,23 @@
         priceAtCreation: obs.price
       }));
 
-      // Sort by x position for proper spacing checks
-      syncedObstacles.sort((a, b) => a.x - b.x);
-
-      // Build new obstacle list, respecting spacing
-      const newObstacles = [];
+      // Build synced obstacle list - trust host's data completely
+      // Host already enforces spacing in generateObstacle()
       const existingById = new Map(state.obstacles.map(o => [o.id, o]));
 
-      for (const syncObs of syncedObstacles) {
-        // Check spacing against obstacles we've already added
-        const rightmostX = newObstacles.length > 0 ?
-          Math.max(...newObstacles.map(o => o.x)) : -MIN_OBSTACLE_SPACING;
-
-        // If spacing is too tight, skip this obstacle (host will re-sync)
-        if (syncObs.x - rightmostX < MIN_OBSTACLE_SPACING && newObstacles.length > 0) {
-          continue;
-        }
-
-        // Use local position if we already have this obstacle (smoother movement)
+      const newObstacles = syncedObstacles.map(syncObs => {
+        // Use local x position if we already have this obstacle (smoother movement)
         // Otherwise use synced position
         if (existingById.has(syncObs.id)) {
           const local = existingById.get(syncObs.id);
-          newObstacles.push({
+          return {
             ...syncObs,
             x: local.x, // Keep local x for smooth movement
             gapY: syncObs.gapY // Use synced gapY (source of truth)
-          });
-        } else {
-          newObstacles.push(syncObs);
+          };
         }
-      }
+        return syncObs;
+      });
 
       state.obstacles = newObstacles;
     }

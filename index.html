@@ -1750,6 +1750,7 @@
     const OBSTACLE_GAP = 150;
     const OBSTACLE_SPEED = 3;
     const OBSTACLE_INTERVAL = 120; // frames
+    const MIN_OBSTACLE_SPACING = 200; // minimum pixels between obstacles
 
     // Multiplayer Constants
     const PLAYER_COLORS = [
@@ -2591,6 +2592,18 @@
     function handleObstacleSpawn(payload) {
       if (state.multiplayer.isHost) return; // Host already has the obstacle
 
+      // Check if we already have this obstacle (by ID)
+      if (state.obstacles.some(o => o.id === payload.id)) {
+        return; // Already have this obstacle
+      }
+
+      // Check spacing - don't add if too close to existing obstacle
+      const rightmostObstacle = state.obstacles.reduce((max, obs) =>
+        obs.x > max ? obs.x : max, 0);
+      if (rightmostObstacle > state.width - MIN_OBSTACLE_SPACING) {
+        return; // Too close, will get it from sync
+      }
+
       // Convert ratio back to pixels based on local screen height
       // Fallback to center if ratio is invalid
       const gapYRatio = payload.gapYRatio;
@@ -2629,20 +2642,38 @@
         priceAtCreation: obs.price
       }));
 
-      // Merge with existing obstacles - keep local positions for smooth movement
-      // but add any missing obstacles
-      const existingIds = new Set(state.obstacles.map(o => o.id));
+      // Sort by x position for proper spacing checks
+      syncedObstacles.sort((a, b) => a.x - b.x);
+
+      // Build new obstacle list, respecting spacing
+      const newObstacles = [];
+      const existingById = new Map(state.obstacles.map(o => [o.id, o]));
 
       for (const syncObs of syncedObstacles) {
-        if (!existingIds.has(syncObs.id)) {
-          // New obstacle we didn't have - add it
-          state.obstacles.push(syncObs);
+        // Check spacing against obstacles we've already added
+        const rightmostX = newObstacles.length > 0 ?
+          Math.max(...newObstacles.map(o => o.x)) : -MIN_OBSTACLE_SPACING;
+
+        // If spacing is too tight, skip this obstacle (host will re-sync)
+        if (syncObs.x - rightmostX < MIN_OBSTACLE_SPACING && newObstacles.length > 0) {
+          continue;
+        }
+
+        // Use local position if we already have this obstacle (smoother movement)
+        // Otherwise use synced position
+        if (existingById.has(syncObs.id)) {
+          const local = existingById.get(syncObs.id);
+          newObstacles.push({
+            ...syncObs,
+            x: local.x, // Keep local x for smooth movement
+            gapY: syncObs.gapY // Use synced gapY (source of truth)
+          });
+        } else {
+          newObstacles.push(syncObs);
         }
       }
 
-      // Remove obstacles that host no longer has (they went off screen)
-      const syncedIds = new Set(syncedObstacles.map(o => o.id));
-      state.obstacles = state.obstacles.filter(o => syncedIds.has(o.id));
+      state.obstacles = newObstacles;
     }
 
     function handlePlayerDeath(payload) {
@@ -3893,6 +3924,15 @@
     }
 
     function generateObstacle() {
+      // Check if there's already an obstacle too close to the spawn position
+      const rightmostObstacle = state.obstacles.reduce((max, obs) =>
+        obs.x > max ? obs.x : max, 0);
+
+      if (rightmostObstacle > state.width - MIN_OBSTACLE_SPACING) {
+        // Too close to existing obstacle, skip this generation
+        return;
+      }
+
       // Use price data to determine gap position - same calculation as green price line
       let gapY = state.height / 2;
 

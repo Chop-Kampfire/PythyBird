@@ -2437,6 +2437,9 @@
         case 'OBSTACLE_SPAWN':
           handleObstacleSpawn(payload);
           break;
+        case 'OBSTACLE_SYNC':
+          handleObstacleSync(payload);
+          break;
         case 'PLAYER_DEATH':
           handlePlayerDeath(payload);
           break;
@@ -2506,6 +2509,36 @@
         passed: false,
         priceAtCreation: payload.price
       });
+    }
+
+    function handleObstacleSync(payload) {
+      if (state.multiplayer.isHost) return; // Host is the source of truth
+
+      if (!payload.obstacles || !Array.isArray(payload.obstacles)) return;
+
+      // Rebuild obstacles from sync data
+      const syncedObstacles = payload.obstacles.map(obs => ({
+        id: obs.id,
+        x: obs.xRatio * state.width,
+        gapY: Math.max(OBSTACLE_GAP / 2, Math.min(state.height - OBSTACLE_GAP / 2, obs.gapYRatio * state.height)),
+        passed: obs.passed,
+        priceAtCreation: obs.price
+      }));
+
+      // Merge with existing obstacles - keep local positions for smooth movement
+      // but add any missing obstacles
+      const existingIds = new Set(state.obstacles.map(o => o.id));
+
+      for (const syncObs of syncedObstacles) {
+        if (!existingIds.has(syncObs.id)) {
+          // New obstacle we didn't have - add it
+          state.obstacles.push(syncObs);
+        }
+      }
+
+      // Remove obstacles that host no longer has (they went off screen)
+      const syncedIds = new Set(syncedObstacles.map(o => o.id));
+      state.obstacles = state.obstacles.filter(o => syncedIds.has(o.id));
     }
 
     function handlePlayerDeath(payload) {
@@ -2873,6 +2906,37 @@
           id: obstacle.id || state.multiplayer.obstacleIdCounter++,
           gapYRatio: gapYRatio,
           price: obstacle.priceAtCreation
+        }
+      });
+    }
+
+    // Periodic full obstacle sync from host (handles missed broadcasts)
+    const OBSTACLE_SYNC_INTERVAL = 500; // ms
+    let lastObstacleSync = 0;
+
+    function broadcastObstacleSync() {
+      if (!state.multiplayer.enabled || !state.multiplayer.isHost) return;
+      if (state.multiplayer.gamePhase !== 'racing') return;
+
+      const now = Date.now();
+      if (now - lastObstacleSync < OBSTACLE_SYNC_INTERVAL) return;
+      lastObstacleSync = now;
+
+      // Send full obstacle list with normalized positions
+      const obstacleData = state.obstacles.map(obs => ({
+        id: obs.id,
+        xRatio: obs.x / state.width,
+        gapYRatio: obs.gapY / state.height,
+        passed: obs.passed,
+        price: obs.priceAtCreation
+      }));
+
+      state.multiplayer.channel.send({
+        type: 'broadcast',
+        event: 'game_event',
+        payload: {
+          type: 'OBSTACLE_SYNC',
+          obstacles: obstacleData
         }
       });
     }
@@ -3668,6 +3732,10 @@
       // Broadcast player state in multiplayer
       if (state.multiplayer.enabled) {
         broadcastPlayerState();
+        // Host periodically syncs full obstacle list for reliability
+        if (state.multiplayer.isHost) {
+          broadcastObstacleSync();
+        }
         renderMpPlayerList();
       }
     }

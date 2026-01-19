@@ -2227,41 +2227,40 @@
       if (!state.multiplayer.lobbyId) return;
 
       const supabase = initSupabaseClient();
+      const lobbyId = state.multiplayer.lobbyId;
 
       try {
         // Remove player from lobby
         await supabase
           .from('lobby_players')
           .delete()
-          .eq('lobby_id', state.multiplayer.lobbyId)
+          .eq('lobby_id', lobbyId)
           .eq('wallet_address', state.wallet.publicKey);
 
-        // If host, delete lobby or transfer host
-        if (state.multiplayer.isHost) {
-          const { data: remainingPlayers } = await supabase
+        // Check remaining players
+        const { data: remainingPlayers } = await supabase
+          .from('lobby_players')
+          .select('*')
+          .eq('lobby_id', lobbyId);
+
+        if (!remainingPlayers || remainingPlayers.length === 0) {
+          // Delete empty lobby
+          await supabase
+            .from('lobbies')
+            .delete()
+            .eq('id', lobbyId);
+        } else if (state.multiplayer.isHost) {
+          // Transfer host to next player
+          const newHost = remainingPlayers[0];
+          await supabase
+            .from('lobbies')
+            .update({ host_wallet: newHost.wallet_address })
+            .eq('id', lobbyId);
+
+          await supabase
             .from('lobby_players')
-            .select('*')
-            .eq('lobby_id', state.multiplayer.lobbyId);
-
-          if (!remainingPlayers || remainingPlayers.length === 0) {
-            // Delete empty lobby
-            await supabase
-              .from('lobbies')
-              .delete()
-              .eq('id', state.multiplayer.lobbyId);
-          } else {
-            // Transfer host to next player
-            const newHost = remainingPlayers[0];
-            await supabase
-              .from('lobbies')
-              .update({ host_wallet: newHost.wallet_address })
-              .eq('id', state.multiplayer.lobbyId);
-
-            await supabase
-              .from('lobby_players')
-              .update({ is_host: true })
-              .eq('id', newHost.id);
-          }
+            .update({ is_host: true })
+            .eq('id', newHost.id);
         }
 
         // Disconnect from channel
@@ -2304,8 +2303,47 @@
       }
     }
 
+    async function cleanupOldLobbies() {
+      const supabase = initSupabaseClient();
+
+      try {
+        // Get lobbies older than 1 hour
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+        // Find old lobbies with no players
+        const { data: oldLobbies } = await supabase
+          .from('lobbies')
+          .select(`
+            id,
+            lobby_players (id)
+          `)
+          .lt('created_at', oneHourAgo);
+
+        if (oldLobbies && oldLobbies.length > 0) {
+          // Filter to only those with no players
+          const emptyOldLobbies = oldLobbies
+            .filter(lobby => !lobby.lobby_players || lobby.lobby_players.length === 0)
+            .map(lobby => lobby.id);
+
+          if (emptyOldLobbies.length > 0) {
+            await supabase
+              .from('lobbies')
+              .delete()
+              .in('id', emptyOldLobbies);
+
+            console.log(`Cleaned up ${emptyOldLobbies.length} old empty lobbies`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to cleanup old lobbies:', error);
+      }
+    }
+
     async function fetchPublicLobbies() {
       const supabase = initSupabaseClient();
+
+      // Cleanup old empty lobbies first
+      await cleanupOldLobbies();
 
       try {
         const { data: lobbies, error } = await supabase

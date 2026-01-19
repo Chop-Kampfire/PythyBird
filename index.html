@@ -1417,6 +1417,10 @@
         <span class="player-count-value" id="playerCount">--</span>
         <span class="player-count-label">players</span>
       </div>
+      <div class="player-count">
+        <span class="player-count-value" id="gamesPlayed">--</span>
+        <span class="player-count-label">games</span>
+      </div>
       <div class="wallet-section">
         <span class="wallet-address" id="walletAddress" style="display: none;"></span>
         <button class="wallet-btn" id="walletBtn">CONNECT WALLET</button>
@@ -1919,6 +1923,7 @@
         console.log('Score submitted successfully');
         await fetchLeaderboard();
         await fetchPlayerCount();
+        await fetchGamesPlayed();
         return true;
       } catch (error) {
         console.error('Failed to submit score:', error);
@@ -1992,23 +1997,54 @@
 
     async function fetchPlayerCount() {
       try {
-        // Get distinct wallet addresses count
-        const query = 'high_scores?select=wallet_address';
-        const results = await supabaseRequest(query, {
-          prefer: 'return=representation'
-        });
+        const supabase = initSupabaseClient();
 
-        if (results) {
-          // Count unique wallet addresses
-          const uniqueWallets = new Set(results.map(r => r.wallet_address));
-          const count = uniqueWallets.size;
-          document.getElementById('playerCount').textContent = count.toLocaleString();
+        // Get unique wallets from high_scores
+        const { data: highScoreWallets } = await supabase
+          .from('high_scores')
+          .select('wallet_address');
+
+        // Get unique wallets from lobby_players (current multiplayer players)
+        const { data: lobbyWallets } = await supabase
+          .from('lobby_players')
+          .select('wallet_address');
+
+        // Combine and count unique wallets
+        const allWallets = new Set();
+        if (highScoreWallets) {
+          highScoreWallets.forEach(r => allWallets.add(r.wallet_address));
+        }
+        if (lobbyWallets) {
+          lobbyWallets.forEach(r => allWallets.add(r.wallet_address));
+        }
+
+        const count = allWallets.size;
+        document.getElementById('playerCount').textContent = count.toLocaleString();
+        return count;
+      } catch (error) {
+        console.error('Failed to fetch player count:', error);
+        document.getElementById('playerCount').textContent = '--';
+        return 0;
+      }
+    }
+
+    async function fetchGamesPlayed() {
+      try {
+        const supabase = initSupabaseClient();
+
+        // Count total games from high_scores (each entry = 1 game played)
+        const { count, error } = await supabase
+          .from('high_scores')
+          .select('*', { count: 'exact', head: true });
+
+        if (!error && count !== null) {
+          document.getElementById('gamesPlayed').textContent = count.toLocaleString();
           return count;
         }
         return 0;
       } catch (error) {
-        console.error('Failed to fetch player count:', error);
-        document.getElementById('playerCount').textContent = '--';
+        console.error('Failed to fetch games played:', error);
+        document.getElementById('gamesPlayed').textContent = '--';
         return 0;
       }
     }
@@ -3036,9 +3072,18 @@
       });
     }
 
-    function showRaceResults(rankings) {
+    async function showRaceResults(rankings) {
       state.multiplayer.gamePhase = 'results';
       state.isPlaying = false;
+
+      // Submit local player's multiplayer score to track games played
+      if (state.wallet.connected) {
+        await submitScore(
+          state.localPlayer.score,
+          state.localPlayer.distance,
+          state.currentFeedSymbol + ' (MP)'
+        );
+      }
 
       const podiumEl = document.getElementById('resultsPodium');
       let html = '';
@@ -3274,6 +3319,7 @@
       // Fetch initial leaderboard and player count
       fetchLeaderboard();
       fetchPlayerCount();
+      fetchGamesPlayed();
 
       // Start render loop
       requestAnimationFrame(gameLoop);

@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Solana Web3.js for blockchain integration -->
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -1519,11 +1521,16 @@
               <div class="label">Share this code</div>
               <div class="code" id="waitingLobbyCode">------</div>
             </div>
+            <!-- Wager Info -->
+            <div class="wager-info-display hidden" id="wagerInfo" style="margin: 0.5rem 0; padding: 0.5rem 1rem; background: rgba(139, 92, 246, 0.2); border-radius: 4px; color: var(--accent-purple); font-weight: bold;"></div>
             <div class="player-slots" id="playerSlots"></div>
             <p class="waiting-info">Racing on: <span id="waitingFeedSymbol">BTC/USD</span></p>
+            <!-- Pot Display -->
+            <p class="pot-display hidden" id="potDisplay" style="margin: 0.5rem 0; color: var(--accent-green); font-size: 0.9rem;"></p>
             <p class="ready-status" id="readyStatus">Waiting for players to ready up...</p>
             <div class="modal-buttons">
               <button class="modal-btn secondary" id="leaveLobbyBtn">LEAVE</button>
+              <button class="modal-btn deposit hidden" id="depositBtn" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: none;">DEPOSIT</button>
               <button class="modal-btn ready" id="readyBtn">READY</button>
               <button class="modal-btn primary hidden" id="startRaceBtn">START RACE</button>
             </div>
@@ -1592,6 +1599,25 @@
               Private Lobby (code only)
             </label>
             <p style="font-size: 0.75rem; color: var(--text-secondary);">Racing on: <span id="createFeedSymbol" style="color: var(--accent-green);">BTC/USD</span></p>
+
+            <!-- Wagering Options -->
+            <div class="wager-section" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(139, 92, 246, 0.3);">
+              <label class="modal-checkbox" style="margin-bottom: 0.75rem;">
+                <input type="checkbox" id="wagerToggle">
+                Enable Wagering (Devnet)
+              </label>
+              <div id="wagerOptions" class="hidden" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <select id="wagerTokenSelect" style="flex: 1; padding: 0.5rem; background: var(--bg-dark); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 4px; color: var(--text-primary); font-family: inherit;">
+                    <option value="SOL">SOL</option>
+                    <option value="USDC">USDC (Devnet)</option>
+                  </select>
+                  <input type="number" id="wagerAmountInput" placeholder="Amount" min="0.001" step="0.001" style="width: 100px; padding: 0.5rem; background: var(--bg-dark); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 4px; color: var(--text-primary); font-family: inherit;">
+                </div>
+                <p style="font-size: 0.7rem; color: var(--accent-purple);">Winner takes all! Each player deposits this amount.</p>
+              </div>
+            </div>
+
             <div class="modal-buttons">
               <button class="modal-btn secondary" id="createCancelBtn">CANCEL</button>
               <button class="modal-btn primary" id="createSubmitBtn">CREATE</button>
@@ -1742,6 +1768,25 @@
         score: 0,
         distance: 0,
         ready: false
+      },
+
+      // Wagering state
+      wager: {
+        enabled: false,
+        amount: 0,              // Wager amount in token decimals
+        tokenMint: null,        // Token mint address
+        tokenSymbol: null,      // e.g., "USDC", "SOL"
+        tokenDecimals: 9,       // Token decimals
+        racePda: null,          // Race account PDA
+        escrowPda: null,        // Escrow token account PDA
+        deposited: false,       // Has local player deposited
+        allDeposited: false     // Have all players deposited
+      },
+
+      // Solana connection
+      solana: {
+        connection: null,
+        programId: null
       }
     };
 
@@ -1769,6 +1814,28 @@
     const PLAYER_X_POSITIONS = [0.15, 0.20, 0.25, 0.30];
     const POSITION_SYNC_INTERVAL = 100; // 10Hz
     const INTERPOLATION_BUFFER = 100;
+
+    // Solana Constants (Devnet)
+    const SOLANA_NETWORK = 'devnet';
+    const SOLANA_RPC_URL = 'https://api.devnet.solana.com';
+    // Program ID - Update after deploying to devnet
+    const WAGER_PROGRAM_ID = '11111111111111111111111111111111';
+
+    // Available tokens for wagering (Devnet)
+    const WAGER_TOKENS = [
+      {
+        symbol: 'SOL',
+        mint: 'So11111111111111111111111111111111111111112',
+        decimals: 9,
+        name: 'Solana (Wrapped)'
+      },
+      {
+        symbol: 'USDC',
+        mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+        decimals: 6,
+        name: 'USD Coin (Devnet)'
+      }
+    ];
 
     // DOM Elements
     const canvas = document.getElementById('gameCanvas');
@@ -1911,6 +1978,224 @@
         disconnectWallet();
       } else {
         connectWallet();
+      }
+    }
+
+    // ============================================
+    // SOLANA WAGERING INTEGRATION
+    // ============================================
+
+    function initSolanaConnection() {
+      try {
+        state.solana.connection = new solanaWeb3.Connection(SOLANA_RPC_URL, 'confirmed');
+        state.solana.programId = new solanaWeb3.PublicKey(WAGER_PROGRAM_ID);
+        console.log('Solana connection initialized:', SOLANA_NETWORK);
+      } catch (err) {
+        console.error('Failed to initialize Solana connection:', err);
+      }
+    }
+
+    // Get PDA for race account
+    function getRacePda(lobbyCode) {
+      const [pda] = solanaWeb3.PublicKey.findProgramAddressSync(
+        [Buffer.from('race'), Buffer.from(lobbyCode)],
+        state.solana.programId
+      );
+      return pda;
+    }
+
+    // Get PDA for escrow token account
+    function getEscrowPda(racePda) {
+      const [pda] = solanaWeb3.PublicKey.findProgramAddressSync(
+        [Buffer.from('escrow'), racePda.toBuffer()],
+        state.solana.programId
+      );
+      return pda;
+    }
+
+    // Format token amount for display
+    function formatTokenAmount(amount, decimals) {
+      return (amount / Math.pow(10, decimals)).toFixed(decimals > 6 ? 4 : 2);
+    }
+
+    // Parse token amount from user input
+    function parseTokenAmount(amount, decimals) {
+      return Math.floor(parseFloat(amount) * Math.pow(10, decimals));
+    }
+
+    // Get user's token balance
+    async function getTokenBalance(mint, owner) {
+      try {
+        const mintPubkey = new solanaWeb3.PublicKey(mint);
+        const ownerPubkey = new solanaWeb3.PublicKey(owner);
+
+        // For native SOL
+        if (mint === 'So11111111111111111111111111111111111111112') {
+          const balance = await state.solana.connection.getBalance(ownerPubkey);
+          return balance;
+        }
+
+        // For SPL tokens - find associated token account
+        const tokenAccounts = await state.solana.connection.getParsedTokenAccountsByOwner(
+          ownerPubkey,
+          { mint: mintPubkey }
+        );
+
+        if (tokenAccounts.value.length > 0) {
+          return tokenAccounts.value[0].account.data.parsed.info.tokenAmount.amount;
+        }
+        return 0;
+      } catch (err) {
+        console.error('Error getting token balance:', err);
+        return 0;
+      }
+    }
+
+    // Reset wager state
+    function resetWagerState() {
+      state.wager = {
+        enabled: false,
+        amount: 0,
+        tokenMint: null,
+        tokenSymbol: null,
+        tokenDecimals: 9,
+        racePda: null,
+        escrowPda: null,
+        deposited: false,
+        allDeposited: false
+      };
+    }
+
+    // Update wager UI in waiting room
+    function updateWagerUI() {
+      const wagerInfo = document.getElementById('wagerInfo');
+      const depositBtn = document.getElementById('depositBtn');
+      const potDisplay = document.getElementById('potDisplay');
+
+      if (!state.wager.enabled) {
+        if (wagerInfo) wagerInfo.classList.add('hidden');
+        if (depositBtn) depositBtn.classList.add('hidden');
+        if (potDisplay) potDisplay.classList.add('hidden');
+        return;
+      }
+
+      if (wagerInfo) {
+        wagerInfo.classList.remove('hidden');
+        wagerInfo.textContent = `WAGER: ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;
+      }
+
+      // Count deposited players
+      const depositedCount = state.multiplayer.players.filter(p => p.hasDeposited).length;
+      const totalPlayers = state.multiplayer.players.length;
+      const totalPot = state.wager.amount * depositedCount;
+
+      if (potDisplay) {
+        potDisplay.classList.remove('hidden');
+        potDisplay.textContent = `POT: ${formatTokenAmount(totalPot, state.wager.tokenDecimals)} ${state.wager.tokenSymbol} (${depositedCount}/${totalPlayers} deposited)`;
+      }
+
+      if (depositBtn) {
+        if (state.wager.deposited) {
+          depositBtn.textContent = 'DEPOSITED';
+          depositBtn.disabled = true;
+          depositBtn.classList.add('deposited');
+        } else {
+          depositBtn.textContent = `DEPOSIT ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;
+          depositBtn.disabled = false;
+          depositBtn.classList.remove('deposited');
+          depositBtn.classList.remove('hidden');
+        }
+      }
+
+      // Check if all players deposited
+      state.wager.allDeposited = totalPlayers >= 2 && depositedCount === totalPlayers;
+      updateStartButton();
+    }
+
+    // Deposit wager (placeholder - full implementation requires deployed program)
+    async function depositWager() {
+      if (!state.wallet.connected) {
+        alert('Please connect your wallet first');
+        return;
+      }
+
+      if (state.wager.deposited) {
+        alert('You have already deposited');
+        return;
+      }
+
+      try {
+        // Show loading state
+        const depositBtn = document.getElementById('depositBtn');
+        if (depositBtn) {
+          depositBtn.textContent = 'DEPOSITING...';
+          depositBtn.disabled = true;
+        }
+
+        // TODO: Once program is deployed, implement actual deposit transaction
+        // For now, simulate deposit for testing UI flow
+        console.log('Deposit would transfer:', state.wager.amount, state.wager.tokenSymbol);
+
+        // Simulate transaction delay
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Mark as deposited locally
+        state.wager.deposited = true;
+
+        // Update database
+        await supabaseRequest(`lobby_players?lobby_id=eq.${state.multiplayer.lobbyId}&wallet_address=eq.${state.wallet.publicKey}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ has_deposited: true })
+        });
+
+        // Broadcast deposit to other players
+        if (state.multiplayer.channel) {
+          state.multiplayer.channel.send({
+            type: 'broadcast',
+            event: 'game_event',
+            payload: {
+              type: 'PLAYER_DEPOSIT',
+              wallet: state.wallet.publicKey
+            }
+          });
+        }
+
+        updateWagerUI();
+        renderMpPlayerList();
+
+      } catch (err) {
+        console.error('Deposit failed:', err);
+        alert('Deposit failed: ' + err.message);
+        const depositBtn = document.getElementById('depositBtn');
+        if (depositBtn) {
+          depositBtn.textContent = `DEPOSIT ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;
+          depositBtn.disabled = false;
+        }
+      }
+    }
+
+    // Handle deposit broadcast from other player
+    function handlePlayerDeposit(payload) {
+      const player = state.multiplayer.players.find(p => p.wallet === payload.wallet);
+      if (player) {
+        player.hasDeposited = true;
+        renderMpPlayerList();
+        updateWagerUI();
+      }
+    }
+
+    // Declare winner (host only - placeholder for deployed program)
+    async function declareWinnerOnChain(winnerWallet) {
+      if (!state.multiplayer.isHost) return;
+      if (!state.wager.enabled) return;
+
+      try {
+        // TODO: Once program is deployed, call declare_winner instruction
+        console.log('Would declare winner:', winnerWallet);
+        console.log('Total pot:', state.wager.amount * state.multiplayer.players.length);
+
+      } catch (err) {
+        console.error('Failed to declare winner on-chain:', err);
       }
     }
 
@@ -2130,7 +2415,7 @@
       return code;
     }
 
-    async function createLobby(name, isPrivate) {
+    async function createLobby(name, isPrivate, wagerEnabled = false, wagerToken = null, wagerAmount = 0) {
       if (!state.wallet.connected) {
         alert('Please connect your wallet first');
         return null;
@@ -2140,18 +2425,30 @@
       const supabase = initSupabaseClient();
 
       try {
+        // Build lobby data
+        const lobbyData = {
+          code: code,
+          name: name || `${state.wallet.displayAddress}'s Race`,
+          host_wallet: state.wallet.publicKey,
+          price_feed_id: state.currentFeed || '',
+          price_feed_symbol: state.currentFeedSymbol,
+          is_private: isPrivate,
+          status: 'waiting'
+        };
+
+        // Add wager fields if enabled
+        if (wagerEnabled && wagerToken) {
+          lobbyData.wager_enabled = true;
+          lobbyData.wager_amount = wagerAmount;
+          lobbyData.token_mint = wagerToken.mint;
+          lobbyData.token_symbol = wagerToken.symbol;
+          lobbyData.token_decimals = wagerToken.decimals;
+        }
+
         // Create lobby
         const { data: lobby, error: lobbyError } = await supabase
           .from('lobbies')
-          .insert({
-            code: code,
-            name: name || `${state.wallet.displayAddress}'s Race`,
-            host_wallet: state.wallet.publicKey,
-            price_feed_id: state.currentFeed || '',
-            price_feed_symbol: state.currentFeedSymbol,
-            is_private: isPrivate,
-            status: 'waiting'
-          })
+          .insert(lobbyData)
           .select()
           .single();
 
@@ -2164,7 +2461,8 @@
             lobby_id: lobby.id,
             wallet_address: state.wallet.publicKey,
             player_slot: 0,
-            is_host: true
+            is_host: true,
+            has_deposited: false
           });
 
         if (playerError) throw playerError;
@@ -2178,6 +2476,18 @@
         state.multiplayer.hostWallet = state.wallet.publicKey;
         state.multiplayer.gamePhase = 'waiting';
         state.localPlayer.slot = 0;
+
+        // Set wager state
+        if (wagerEnabled && wagerToken) {
+          state.wager.enabled = true;
+          state.wager.amount = wagerAmount;
+          state.wager.tokenMint = wagerToken.mint;
+          state.wager.tokenSymbol = wagerToken.symbol;
+          state.wager.tokenDecimals = wagerToken.decimals;
+          state.wager.deposited = false;
+        } else {
+          resetWagerState();
+        }
 
         // Connect to realtime channel
         await connectToLobbyChannel(code);
@@ -2247,7 +2557,8 @@
             lobby_id: lobbyId,
             wallet_address: state.wallet.publicKey,
             player_slot: availableSlot,
-            is_host: false
+            is_host: false,
+            has_deposited: false
           });
 
         if (joinError) throw joinError;
@@ -2261,6 +2572,18 @@
         state.multiplayer.hostWallet = lobby.host_wallet;
         state.multiplayer.gamePhase = 'waiting';
         state.localPlayer.slot = availableSlot;
+
+        // Set wager state from lobby
+        if (lobby.wager_enabled) {
+          state.wager.enabled = true;
+          state.wager.amount = lobby.wager_amount;
+          state.wager.tokenMint = lobby.token_mint;
+          state.wager.tokenSymbol = lobby.token_symbol;
+          state.wager.tokenDecimals = lobby.token_decimals;
+          state.wager.deposited = false;
+        } else {
+          resetWagerState();
+        }
 
         // Connect to realtime channel
         await connectToLobbyChannel(lobby.code);
@@ -2564,6 +2887,9 @@
         case 'GAME_END':
           handleGameEnd(payload);
           break;
+        case 'PLAYER_DEPOSIT':
+          handlePlayerDeposit(payload);
+          break;
       }
     }
 
@@ -2781,6 +3107,7 @@
       document.getElementById('waitingLobbyCode').textContent = state.multiplayer.lobbyCode;
       document.getElementById('waitingFeedSymbol').textContent = state.currentFeedSymbol;
       renderPlayerSlots();
+      updateWagerUI();
       updateStartButton();
     }
 
@@ -2794,17 +3121,27 @@
         const color = PLAYER_COLORS[i];
         const isHost = player && player.wallet === state.multiplayer.hostWallet;
         const isReady = player && player.ready;
+        const hasDeposited = player && player.hasDeposited;
         const slotClass = player ? (isReady ? 'player-slot occupied ready' : 'player-slot occupied') : 'player-slot';
 
         if (player) {
           const readyBadge = isReady
             ? '<span class="ready-badge is-ready">READY</span>'
             : '<span class="ready-badge afk">NOT READY</span>';
+
+          // Deposit badge for wager lobbies
+          let depositBadge = '';
+          if (state.wager.enabled) {
+            depositBadge = hasDeposited
+              ? '<span class="deposit-badge deposited" style="background: rgba(0,255,136,0.2); color: var(--accent-green); padding: 2px 6px; border-radius: 3px; font-size: 0.65rem; margin-left: 4px;">DEPOSITED</span>'
+              : '<span class="deposit-badge pending" style="background: rgba(255,180,0,0.2); color: #ffb400; padding: 2px 6px; border-radius: 3px; font-size: 0.65rem; margin-left: 4px;">PENDING</span>';
+          }
+
           html += `
             <div class="${slotClass}">
               <div class="slot-color" style="background: ${color.main}"></div>
               <div class="slot-info">
-                <div class="slot-address">${truncateAddress(player.wallet)}${isHost ? ' <span class="host-badge">HOST</span>' : ''}</div>
+                <div class="slot-address">${truncateAddress(player.wallet)}${isHost ? ' <span class="host-badge">HOST</span>' : ''}${depositBadge}</div>
                 ${readyBadge}
               </div>
             </div>
@@ -2830,7 +3167,14 @@
       const allReady = state.multiplayer.players.length >= 2 &&
         state.multiplayer.players.every(p => p.ready);
 
-      if (state.multiplayer.isHost && state.multiplayer.players.length >= 2 && allReady) {
+      // If wagering is enabled, also require all players to have deposited
+      let canStart = allReady;
+      if (state.wager.enabled) {
+        const allDeposited = state.multiplayer.players.every(p => p.hasDeposited);
+        canStart = allReady && allDeposited;
+      }
+
+      if (state.multiplayer.isHost && state.multiplayer.players.length >= 2 && canStart) {
         startBtn.classList.remove('hidden');
       } else {
         startBtn.classList.add('hidden');
@@ -3235,6 +3579,9 @@
       // Initialize wallet
       initWallet();
 
+      // Initialize Solana connection
+      initSolanaConnection();
+
       // Display high score
       highScoreEl.textContent = state.highScore;
 
@@ -3288,20 +3635,61 @@
       document.getElementById('createSubmitBtn')?.addEventListener('click', async () => {
         const nameInput = document.getElementById('lobbyNameInput');
         const privateCheckbox = document.getElementById('privateToggle');
+        const wagerToggle = document.getElementById('wagerToggle');
+        const wagerTokenSelect = document.getElementById('wagerTokenSelect');
+        const wagerAmountInput = document.getElementById('wagerAmountInput');
+
         const name = nameInput.value.trim() || 'Unnamed Race';
         const isPrivate = privateCheckbox.checked;
 
+        // Wager options
+        let wagerEnabled = wagerToggle?.checked || false;
+        let wagerToken = null;
+        let wagerAmount = 0;
+
+        if (wagerEnabled) {
+          const tokenSymbol = wagerTokenSelect?.value || 'SOL';
+          wagerToken = WAGER_TOKENS.find(t => t.symbol === tokenSymbol);
+          const rawAmount = parseFloat(wagerAmountInput?.value || 0);
+
+          if (!wagerToken || rawAmount <= 0) {
+            alert('Please enter a valid wager amount');
+            return;
+          }
+
+          wagerAmount = parseTokenAmount(rawAmount, wagerToken.decimals);
+        }
+
         hideModal('createLobbyModal');
-        const success = await createLobby(name, isPrivate);
+        const success = await createLobby(name, isPrivate, wagerEnabled, wagerToken, wagerAmount);
         if (success) {
           showWaitingRoom();
         }
+
+        // Reset form
         nameInput.value = '';
         privateCheckbox.checked = false;
+        if (wagerToggle) wagerToggle.checked = false;
+        if (wagerAmountInput) wagerAmountInput.value = '';
+        document.getElementById('wagerOptions')?.classList.add('hidden');
       });
 
       document.getElementById('createCancelBtn')?.addEventListener('click', () => {
         hideModal('createLobbyModal');
+        // Reset wager toggle
+        const wagerToggle = document.getElementById('wagerToggle');
+        if (wagerToggle) wagerToggle.checked = false;
+        document.getElementById('wagerOptions')?.classList.add('hidden');
+      });
+
+      // Wager toggle handler
+      document.getElementById('wagerToggle')?.addEventListener('change', (e) => {
+        const wagerOptions = document.getElementById('wagerOptions');
+        if (e.target.checked) {
+          wagerOptions?.classList.remove('hidden');
+        } else {
+          wagerOptions?.classList.add('hidden');
+        }
       });
 
       document.getElementById('joinSubmitBtn')?.addEventListener('click', async () => {
@@ -3336,6 +3724,11 @@
       document.getElementById('leaveLobbyBtn')?.addEventListener('click', async () => {
         await leaveLobby();
         showMainMenu();
+      });
+
+      // Deposit button for wagering
+      document.getElementById('depositBtn')?.addEventListener('click', async () => {
+        await depositWager();
       });
 
       document.getElementById('browserBackBtn')?.addEventListener('click', () => {

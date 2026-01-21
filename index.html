@@ -2994,6 +2994,9 @@
     }
 
     function resetMultiplayerState() {
+      // Clear ready timer
+      clearReadyTimer();
+
       state.multiplayer.enabled = false;
       state.multiplayer.isHost = false;
       state.multiplayer.lobbyId = null;
@@ -3538,19 +3541,26 @@
       }
     }
 
+    // Ready timer state
+    let readyTimerId = null;
+    let readyTimeRemaining = 0;
+
     async function toggleReady() {
-      state.localPlayer.ready = !state.localPlayer.ready;
+      const readyBtn = document.getElementById('readyBtn');
+
+      // If already ready, don't allow manual toggle off (timer handles it)
+      if (state.localPlayer.ready) {
+        return;
+      }
+
+      // Set ready
+      state.localPlayer.ready = true;
+      readyTimeRemaining = 15;
 
       // Update button appearance
-      const readyBtn = document.getElementById('readyBtn');
       if (readyBtn) {
-        if (state.localPlayer.ready) {
-          readyBtn.classList.add('is-ready');
-          readyBtn.textContent = 'READY!';
-        } else {
-          readyBtn.classList.remove('is-ready');
-          readyBtn.textContent = 'READY';
-        }
+        readyBtn.classList.add('is-ready');
+        readyBtn.textContent = `READY! (${readyTimeRemaining}s)`;
       }
 
       // Update presence to broadcast ready status
@@ -3562,6 +3572,54 @@
           ready: state.localPlayer.ready
         });
       }
+
+      // Clear any existing timer
+      if (readyTimerId) {
+        clearInterval(readyTimerId);
+      }
+
+      // Start 15 second countdown
+      readyTimerId = setInterval(async () => {
+        readyTimeRemaining--;
+
+        if (readyBtn && state.localPlayer.ready) {
+          readyBtn.textContent = `READY! (${readyTimeRemaining}s)`;
+        }
+
+        if (readyTimeRemaining <= 0) {
+          // Timer expired - reset ready status
+          clearInterval(readyTimerId);
+          readyTimerId = null;
+
+          state.localPlayer.ready = false;
+
+          if (readyBtn) {
+            readyBtn.classList.remove('is-ready');
+            readyBtn.textContent = 'READY';
+          }
+
+          // Broadcast unready status
+          if (state.multiplayer.channel) {
+            await state.multiplayer.channel.track({
+              wallet: state.wallet.publicKey,
+              slot: state.localPlayer.slot,
+              displayName: state.wallet.displayAddress,
+              ready: false
+            });
+          }
+
+          updateStartButton();
+        }
+      }, 1000);
+    }
+
+    // Clear ready timer (called when game starts or player leaves)
+    function clearReadyTimer() {
+      if (readyTimerId) {
+        clearInterval(readyTimerId);
+        readyTimerId = null;
+      }
+      readyTimeRemaining = 0;
     }
 
     function renderMpPlayerList() {
@@ -3661,6 +3719,9 @@
     }
 
     function startMultiplayerGame() {
+      // Clear ready timer when game starts
+      clearReadyTimer();
+
       state.multiplayer.gamePhase = 'racing';
       state.isPlaying = true;
       state.score = 0;

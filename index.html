@@ -2003,8 +2003,9 @@
 
     // Get PDA for race account
     function getRacePda(lobbyCode) {
+      const encoder = new TextEncoder();
       const [pda] = solanaWeb3.PublicKey.findProgramAddressSync(
-        [Buffer.from('race'), Buffer.from(lobbyCode)],
+        [encoder.encode('race'), encoder.encode(lobbyCode)],
         state.solana.programId
       );
       return pda;
@@ -2012,8 +2013,9 @@
 
     // Get PDA for escrow token account
     function getEscrowPda(racePda) {
+      const encoder = new TextEncoder();
       const [pda] = solanaWeb3.PublicKey.findProgramAddressSync(
-        [Buffer.from('escrow'), racePda.toBuffer()],
+        [encoder.encode('escrow'), racePda.toBytes()],
         state.solana.programId
       );
       return pda;
@@ -2187,7 +2189,7 @@
         const discriminator = await getInstructionDiscriminator('deposit_wager');
 
         // Build instruction data (just the discriminator, no additional args)
-        const instructionData = Buffer.from(discriminator);
+        const instructionData = new Uint8Array(discriminator);
 
         // Build the instruction
         const depositInstruction = new solanaWeb3.TransactionInstruction({
@@ -2306,18 +2308,19 @@
       // Build instruction data: discriminator + lobby_code (6 bytes string) + wager_amount (u64)
       // Anchor serialization: string is 4-byte length prefix + bytes, u64 is 8 bytes little-endian
       const lobbyCodeBytes = new TextEncoder().encode(lobbyCode);
-      const instructionData = Buffer.alloc(8 + 4 + 6 + 8); // discriminator + string_len + string + u64
+      const instructionData = new Uint8Array(8 + 4 + 6 + 8); // discriminator + string_len + string + u64
+      const dataView = new DataView(instructionData.buffer);
 
-      // Write discriminator
-      Buffer.from(discriminator).copy(instructionData, 0);
+      // Write discriminator (8 bytes)
+      instructionData.set(discriminator, 0);
 
       // Write lobby_code string (Anchor format: 4-byte length + bytes)
-      instructionData.writeUInt32LE(6, 8); // string length
-      Buffer.from(lobbyCodeBytes).copy(instructionData, 12);
+      dataView.setUint32(8, 6, true); // string length (little-endian)
+      instructionData.set(lobbyCodeBytes, 12);
 
       // Write wager_amount as u64 little-endian
       const amountBigInt = BigInt(wagerAmount);
-      instructionData.writeBigUInt64LE(amountBigInt, 18);
+      dataView.setBigUint64(18, amountBigInt, true);
 
       // Build the instruction
       // Accounts order from CreateRace struct:

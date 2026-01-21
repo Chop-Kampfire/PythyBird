@@ -1837,6 +1837,12 @@
       }
     ];
 
+    // SPL Token Program Constants
+    const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+    const ASSOCIATED_TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+    const SYSTEM_PROGRAM_ID = new solanaWeb3.PublicKey('11111111111111111111111111111111');
+    const RENT_SYSVAR_ID = new solanaWeb3.PublicKey('SysvarRent111111111111111111111111111111111');
+
     // DOM Elements
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
@@ -2013,6 +2019,27 @@
       return pda;
     }
 
+    // Get Associated Token Address for a wallet and mint
+    function getAssociatedTokenAddress(mint, owner) {
+      const [ata] = solanaWeb3.PublicKey.findProgramAddressSync(
+        [
+          owner.toBuffer(),
+          TOKEN_PROGRAM_ID.toBuffer(),
+          mint.toBuffer()
+        ],
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      return ata;
+    }
+
+    // Compute Anchor instruction discriminator (sha256 hash of instruction name)
+    async function getInstructionDiscriminator(instructionName) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`global:${instructionName}`);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      return new Uint8Array(hashBuffer).slice(0, 8);
+    }
+
     // Format token amount for display
     function formatTokenAmount(amount, decimals) {
       return (amount / Math.pow(10, decimals)).toFixed(decimals > 6 ? 4 : 2);
@@ -2112,7 +2139,7 @@
       updateStartButton();
     }
 
-    // Deposit wager (placeholder - full implementation requires deployed program)
+    // Deposit wager - transfers tokens to escrow via Solana program
     async function depositWager() {
       if (!state.wallet.connected) {
         alert('Please connect your wallet first');
@@ -2124,6 +2151,12 @@
         return;
       }
 
+      const provider = getPhantomProvider();
+      if (!provider) {
+        alert('Phantom wallet not found');
+        return;
+      }
+
       try {
         // Show loading state
         const depositBtn = document.getElementById('depositBtn');
@@ -2132,12 +2165,67 @@
           depositBtn.disabled = true;
         }
 
-        // TODO: Once program is deployed, implement actual deposit transaction
-        // For now, simulate deposit for testing UI flow
-        console.log('Deposit would transfer:', state.wager.amount, state.wager.tokenSymbol);
+        console.log('Building deposit transaction...');
+        console.log('Lobby code:', state.multiplayer.lobbyCode);
+        console.log('Token mint:', state.wager.tokenMint);
+        console.log('Amount:', state.wager.amount);
 
-        // Simulate transaction delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Get PDAs
+        const racePda = getRacePda(state.multiplayer.lobbyCode);
+        const escrowPda = getEscrowPda(racePda);
+        const playerPubkey = new solanaWeb3.PublicKey(state.wallet.publicKey);
+        const mintPubkey = new solanaWeb3.PublicKey(state.wager.tokenMint);
+
+        // Get player's associated token account
+        const playerTokenAccount = getAssociatedTokenAddress(mintPubkey, playerPubkey);
+
+        console.log('Race PDA:', racePda.toString());
+        console.log('Escrow PDA:', escrowPda.toString());
+        console.log('Player token account:', playerTokenAccount.toString());
+
+        // Get the instruction discriminator for deposit_wager
+        const discriminator = await getInstructionDiscriminator('deposit_wager');
+
+        // Build instruction data (just the discriminator, no additional args)
+        const instructionData = Buffer.from(discriminator);
+
+        // Build the instruction
+        const depositInstruction = new solanaWeb3.TransactionInstruction({
+          keys: [
+            { pubkey: racePda, isSigner: false, isWritable: true },
+            { pubkey: escrowPda, isSigner: false, isWritable: true },
+            { pubkey: playerTokenAccount, isSigner: false, isWritable: true },
+            { pubkey: playerPubkey, isSigner: true, isWritable: true },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+          ],
+          programId: state.solana.programId,
+          data: instructionData
+        });
+
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(depositInstruction);
+
+        // Get recent blockhash
+        const { blockhash } = await state.solana.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = playerPubkey;
+
+        console.log('Requesting wallet signature...');
+
+        // Sign and send transaction via Phantom
+        const signedTransaction = await provider.signTransaction(transaction);
+        const signature = await state.solana.connection.sendRawTransaction(signedTransaction.serialize());
+
+        console.log('Transaction sent:', signature);
+
+        // Wait for confirmation
+        const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+
+        if (confirmation.value.err) {
+          throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
+        }
+
+        console.log('Deposit confirmed:', signature);
 
         // Mark as deposited locally
         state.wager.deposited = true;
@@ -2145,7 +2233,10 @@
         // Update database
         await supabaseRequest(`lobby_players?lobby_id=eq.${state.multiplayer.lobbyId}&wallet_address=eq.${state.wallet.publicKey}`, {
           method: 'PATCH',
-          body: JSON.stringify({ has_deposited: true })
+          body: JSON.stringify({
+            has_deposited: true,
+            deposit_signature: signature
+          })
         });
 
         // Broadcast deposit to other players
@@ -2155,7 +2246,8 @@
             event: 'game_event',
             payload: {
               type: 'PLAYER_DEPOSIT',
-              wallet: state.wallet.publicKey
+              wallet: state.wallet.publicKey,
+              signature: signature
             }
           });
         }
@@ -2163,9 +2255,11 @@
         updateWagerUI();
         renderMpPlayerList();
 
+        alert('Deposit successful! Transaction: ' + signature.slice(0, 20) + '...');
+
       } catch (err) {
         console.error('Deposit failed:', err);
-        alert('Deposit failed: ' + err.message);
+        alert('Deposit failed: ' + (err.message || err));
         const depositBtn = document.getElementById('depositBtn');
         if (depositBtn) {
           depositBtn.textContent = `DEPOSIT ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;

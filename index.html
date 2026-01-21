@@ -2232,6 +2232,12 @@
         // Mark as deposited locally
         state.wager.deposited = true;
 
+        // Also update the local player in multiplayer players list
+        const localPlayer = state.multiplayer.players.find(p => p.wallet === state.wallet.publicKey);
+        if (localPlayer) {
+          localPlayer.hasDeposited = true;
+        }
+
         // Update database
         await supabaseRequest(`lobby_players?lobby_id=eq.${state.multiplayer.lobbyId}&wallet_address=eq.${state.wallet.publicKey}`, {
           method: 'PATCH',
@@ -2377,18 +2383,107 @@
       return signature;
     }
 
-    // Declare winner (host only - placeholder for deployed program)
+    // Declare winner and transfer pot (host only)
     async function declareWinnerOnChain(winnerWallet) {
       if (!state.multiplayer.isHost) return;
       if (!state.wager.enabled) return;
 
+      const provider = getPhantomProvider();
+      if (!provider) {
+        console.error('Phantom wallet not found');
+        return;
+      }
+
       try {
-        // TODO: Once program is deployed, call declare_winner instruction
-        console.log('Would declare winner:', winnerWallet);
+        console.log('Declaring winner on-chain:', winnerWallet);
         console.log('Total pot:', state.wager.amount * state.multiplayer.players.length);
+
+        const hostPubkey = new solanaWeb3.PublicKey(state.wallet.publicKey);
+        const winnerPubkey = new solanaWeb3.PublicKey(winnerWallet);
+        const mintPubkey = new solanaWeb3.PublicKey(state.wager.tokenMint);
+
+        // Get PDAs
+        const racePda = getRacePda(state.multiplayer.lobbyCode);
+        const escrowPda = getEscrowPda(racePda);
+
+        // Get winner's associated token account
+        const winnerTokenAccount = getAssociatedTokenAddress(mintPubkey, winnerPubkey);
+
+        console.log('Race PDA:', racePda.toString());
+        console.log('Escrow PDA:', escrowPda.toString());
+        console.log('Winner token account:', winnerTokenAccount.toString());
+
+        // Get the instruction discriminator for declare_winner
+        const discriminator = await getInstructionDiscriminator('declare_winner');
+
+        // Build instruction data: discriminator + winner pubkey (32 bytes)
+        const instructionData = new Uint8Array(8 + 32);
+        instructionData.set(discriminator, 0);
+        instructionData.set(winnerPubkey.toBytes(), 8);
+
+        // Build the instruction
+        // Accounts order from DeclareWinner struct:
+        // 1. race (mut)
+        // 2. escrow (mut)
+        // 3. winner_token_account (mut)
+        // 4. host (signer)
+        // 5. token_program
+        const declareWinnerInstruction = new solanaWeb3.TransactionInstruction({
+          keys: [
+            { pubkey: racePda, isSigner: false, isWritable: true },
+            { pubkey: escrowPda, isSigner: false, isWritable: true },
+            { pubkey: winnerTokenAccount, isSigner: false, isWritable: true },
+            { pubkey: hostPubkey, isSigner: true, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+          ],
+          programId: state.solana.programId,
+          data: instructionData
+        });
+
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(declareWinnerInstruction);
+
+        // Get recent blockhash
+        const { blockhash } = await state.solana.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = hostPubkey;
+
+        console.log('Requesting wallet signature for winner declaration...');
+
+        // Sign and send transaction via Phantom
+        const signedTransaction = await provider.signTransaction(transaction);
+        const signature = await state.solana.connection.sendRawTransaction(signedTransaction.serialize());
+
+        console.log('Declare winner transaction sent:', signature);
+
+        // Wait for confirmation
+        const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+
+        if (confirmation.value.err) {
+          throw new Error('Declare winner transaction failed: ' + JSON.stringify(confirmation.value.err));
+        }
+
+        console.log('Winner declared and pot transferred:', signature);
+
+        // Broadcast winner payout to all players
+        if (state.multiplayer.channel) {
+          state.multiplayer.channel.send({
+            type: 'broadcast',
+            event: 'game_event',
+            payload: {
+              type: 'WINNER_PAID',
+              winner: winnerWallet,
+              signature: signature,
+              amount: state.wager.amount * state.multiplayer.players.length
+            }
+          });
+        }
+
+        return signature;
 
       } catch (err) {
         console.error('Failed to declare winner on-chain:', err);
+        alert('Failed to transfer winnings: ' + (err.message || err));
       }
     }
 
@@ -3052,9 +3147,12 @@
           wallet: p.wallet_address,
           slot: p.player_slot,
           isHost: p.is_host,
-          alive: p.is_alive
+          alive: p.is_alive,
+          hasDeposited: p.has_deposited || false
         }));
         renderPlayerSlots();
+        renderMpPlayerList();
+        updateWagerUI();
         updateStartButton();
       }
     }
@@ -3648,7 +3746,7 @@
       });
     }
 
-    function checkGameEnd() {
+    async function checkGameEnd() {
       if (state.multiplayer.gamePhase !== 'racing') return;
 
       const alivePlayers = [
@@ -3659,14 +3757,25 @@
       if (alivePlayers.length <= 1) {
         // Game ends
         const rankings = calculateRankings();
+        const winner = alivePlayers[0] || rankings[0]?.wallet;
 
         if (state.multiplayer.isHost) {
+          // If wagering is enabled, transfer pot to winner on-chain
+          if (state.wager.enabled && winner) {
+            console.log('Race ended with wagering - paying winner:', winner);
+            try {
+              await declareWinnerOnChain(winner);
+            } catch (err) {
+              console.error('Failed to pay winner:', err);
+            }
+          }
+
           state.multiplayer.channel.send({
             type: 'broadcast',
             event: 'game_event',
             payload: {
               type: 'GAME_END',
-              winner: alivePlayers[0] || rankings[0]?.wallet,
+              winner: winner,
               rankings: rankings
             }
           });

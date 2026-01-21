@@ -2278,6 +2278,102 @@
       }
     }
 
+    // Create race account on-chain (host only, called when creating wager lobby)
+    async function createRaceOnChain(lobbyCode, tokenMint, wagerAmount) {
+      const provider = getPhantomProvider();
+      if (!provider) {
+        throw new Error('Phantom wallet not found');
+      }
+
+      console.log('Creating race on-chain...');
+      console.log('Lobby code:', lobbyCode);
+      console.log('Token mint:', tokenMint);
+      console.log('Wager amount:', wagerAmount);
+
+      const hostPubkey = new solanaWeb3.PublicKey(state.wallet.publicKey);
+      const mintPubkey = new solanaWeb3.PublicKey(tokenMint);
+
+      // Derive PDAs
+      const racePda = getRacePda(lobbyCode);
+      const escrowPda = getEscrowPda(racePda);
+
+      console.log('Race PDA:', racePda.toString());
+      console.log('Escrow PDA:', escrowPda.toString());
+
+      // Get the instruction discriminator for create_race
+      const discriminator = await getInstructionDiscriminator('create_race');
+
+      // Build instruction data: discriminator + lobby_code (6 bytes string) + wager_amount (u64)
+      // Anchor serialization: string is 4-byte length prefix + bytes, u64 is 8 bytes little-endian
+      const lobbyCodeBytes = new TextEncoder().encode(lobbyCode);
+      const instructionData = Buffer.alloc(8 + 4 + 6 + 8); // discriminator + string_len + string + u64
+
+      // Write discriminator
+      Buffer.from(discriminator).copy(instructionData, 0);
+
+      // Write lobby_code string (Anchor format: 4-byte length + bytes)
+      instructionData.writeUInt32LE(6, 8); // string length
+      Buffer.from(lobbyCodeBytes).copy(instructionData, 12);
+
+      // Write wager_amount as u64 little-endian
+      const amountBigInt = BigInt(wagerAmount);
+      instructionData.writeBigUInt64LE(amountBigInt, 18);
+
+      // Build the instruction
+      // Accounts order from CreateRace struct:
+      // 1. race (init, writable)
+      // 2. escrow (init, writable)
+      // 3. token_mint
+      // 4. host (signer, writable)
+      // 5. system_program
+      // 6. token_program
+      // 7. rent
+      const createRaceInstruction = new solanaWeb3.TransactionInstruction({
+        keys: [
+          { pubkey: racePda, isSigner: false, isWritable: true },
+          { pubkey: escrowPda, isSigner: false, isWritable: true },
+          { pubkey: mintPubkey, isSigner: false, isWritable: false },
+          { pubkey: hostPubkey, isSigner: true, isWritable: true },
+          { pubkey: SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+          { pubkey: RENT_SYSVAR_ID, isSigner: false, isWritable: false }
+        ],
+        programId: state.solana.programId,
+        data: instructionData
+      });
+
+      // Create transaction
+      const transaction = new solanaWeb3.Transaction().add(createRaceInstruction);
+
+      // Get recent blockhash
+      const { blockhash } = await state.solana.connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = hostPubkey;
+
+      console.log('Requesting wallet signature for race creation...');
+
+      // Sign and send transaction via Phantom
+      const signedTransaction = await provider.signTransaction(transaction);
+      const signature = await state.solana.connection.sendRawTransaction(signedTransaction.serialize());
+
+      console.log('Create race transaction sent:', signature);
+
+      // Wait for confirmation
+      const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+
+      if (confirmation.value.err) {
+        throw new Error('Create race transaction failed: ' + JSON.stringify(confirmation.value.err));
+      }
+
+      console.log('Race created on-chain:', signature);
+
+      // Store PDAs in state
+      state.wager.racePda = racePda.toString();
+      state.wager.escrowPda = escrowPda.toString();
+
+      return signature;
+    }
+
     // Declare winner (host only - placeholder for deployed program)
     async function declareWinnerOnChain(winnerWallet) {
       if (!state.multiplayer.isHost) return;
@@ -2579,6 +2675,26 @@
           state.wager.tokenSymbol = wagerToken.symbol;
           state.wager.tokenDecimals = wagerToken.decimals;
           state.wager.deposited = false;
+
+          // Create race on-chain (host must sign this transaction)
+          try {
+            console.log('Creating on-chain race account...');
+            const raceTxSig = await createRaceOnChain(code, wagerToken.mint, wagerAmount);
+            console.log('Race created on-chain:', raceTxSig);
+
+            // Update lobby with race PDA
+            await supabase
+              .from('lobbies')
+              .update({ race_pda: state.wager.racePda })
+              .eq('id', lobby.id);
+
+          } catch (raceError) {
+            console.error('Failed to create on-chain race:', raceError);
+            // Clean up the database lobby since on-chain failed
+            await supabase.from('lobby_players').delete().eq('lobby_id', lobby.id);
+            await supabase.from('lobbies').delete().eq('id', lobby.id);
+            throw new Error('Failed to create on-chain race: ' + raceError.message);
+          }
         } else {
           resetWagerState();
         }
@@ -2589,7 +2705,7 @@
         return lobby;
       } catch (error) {
         console.error('Failed to create lobby:', error);
-        alert('Failed to create lobby. Please try again.');
+        alert('Failed to create lobby: ' + (error.message || 'Please try again.'));
         return null;
       }
     }

@@ -1524,6 +1524,8 @@
             <div class="modal-buttons">
               <button class="modal-btn secondary" id="leaveLobbyBtn">LEAVE</button>
               <button class="modal-btn deposit hidden" id="depositBtn" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: none;">DEPOSIT</button>
+              <button class="modal-btn hidden" id="cancelRaceBtn" style="background: linear-gradient(135deg, #ef4444, #dc2626); border: none;">CANCEL RACE</button>
+              <button class="modal-btn hidden" id="claimRefundBtn" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">CLAIM REFUND</button>
               <button class="modal-btn ready" id="readyBtn">READY</button>
               <button class="modal-btn primary hidden" id="startRaceBtn">START RACE</button>
             </div>
@@ -1773,7 +1775,9 @@
         racePda: null,          // Race account PDA
         escrowPda: null,        // Escrow token account PDA
         deposited: false,       // Has local player deposited
-        allDeposited: false     // Have all players deposited
+        allDeposited: false,    // Have all players deposited
+        cancelled: false,       // Has race been cancelled
+        refunded: false         // Has local player claimed refund
       },
 
       // Solana connection
@@ -2084,7 +2088,9 @@
         racePda: null,
         escrowPda: null,
         deposited: false,
-        allDeposited: false
+        allDeposited: false,
+        cancelled: false,
+        refunded: false
       };
     }
 
@@ -2093,17 +2099,29 @@
       const wagerInfo = document.getElementById('wagerInfo');
       const depositBtn = document.getElementById('depositBtn');
       const potDisplay = document.getElementById('potDisplay');
+      const cancelRaceBtn = document.getElementById('cancelRaceBtn');
+      const claimRefundBtn = document.getElementById('claimRefundBtn');
 
       if (!state.wager.enabled) {
         if (wagerInfo) wagerInfo.classList.add('hidden');
         if (depositBtn) depositBtn.classList.add('hidden');
         if (potDisplay) potDisplay.classList.add('hidden');
+        if (cancelRaceBtn) cancelRaceBtn.classList.add('hidden');
+        if (claimRefundBtn) claimRefundBtn.classList.add('hidden');
         return;
       }
 
       if (wagerInfo) {
         wagerInfo.classList.remove('hidden');
-        wagerInfo.textContent = `WAGER: ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;
+        if (state.wager.cancelled) {
+          wagerInfo.textContent = `RACE CANCELLED - Claim your refund`;
+          wagerInfo.style.background = 'rgba(239, 68, 68, 0.2)';
+          wagerInfo.style.color = '#ef4444';
+        } else {
+          wagerInfo.textContent = `WAGER: ${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol}`;
+          wagerInfo.style.background = 'rgba(139, 92, 246, 0.2)';
+          wagerInfo.style.color = 'var(--accent-purple)';
+        }
       }
 
       // Count deposited players
@@ -2116,6 +2134,32 @@
         potDisplay.textContent = `POT: ${formatTokenAmount(totalPot, state.wager.tokenDecimals)} ${state.wager.tokenSymbol} (${depositedCount}/${totalPlayers} deposited)`;
       }
 
+      // Handle cancelled state
+      if (state.wager.cancelled) {
+        // Hide deposit button when cancelled
+        if (depositBtn) depositBtn.classList.add('hidden');
+        if (cancelRaceBtn) cancelRaceBtn.classList.add('hidden');
+
+        // Show refund button if player deposited and hasn't claimed yet
+        if (claimRefundBtn) {
+          if (state.wager.deposited && !state.wager.refunded) {
+            claimRefundBtn.classList.remove('hidden');
+            claimRefundBtn.textContent = `CLAIM REFUND (${formatTokenAmount(state.wager.amount, state.wager.tokenDecimals)} ${state.wager.tokenSymbol})`;
+          } else if (state.wager.refunded) {
+            claimRefundBtn.classList.remove('hidden');
+            claimRefundBtn.textContent = 'REFUNDED';
+            claimRefundBtn.disabled = true;
+          } else {
+            claimRefundBtn.classList.add('hidden');
+          }
+        }
+        return;
+      }
+
+      // Normal (not cancelled) state
+      if (claimRefundBtn) claimRefundBtn.classList.add('hidden');
+
+      // Deposit button
       if (depositBtn) {
         if (state.wager.deposited) {
           depositBtn.textContent = 'DEPOSITED';
@@ -2126,6 +2170,15 @@
           depositBtn.disabled = false;
           depositBtn.classList.remove('deposited');
           depositBtn.classList.remove('hidden');
+        }
+      }
+
+      // Cancel button - only show to host when wager enabled and game hasn't started
+      if (cancelRaceBtn) {
+        if (state.multiplayer.isHost && state.multiplayer.gamePhase === 'waiting') {
+          cancelRaceBtn.classList.remove('hidden');
+        } else {
+          cancelRaceBtn.classList.add('hidden');
         }
       }
 
@@ -2568,6 +2621,175 @@
       } catch (err) {
         console.error('Failed to start race on-chain:', err);
         throw err;
+      }
+    }
+
+    // Cancel race on-chain (host only, before race starts)
+    async function cancelRaceOnChain() {
+      if (!state.multiplayer.isHost) {
+        alert('Only the host can cancel the race');
+        return;
+      }
+      if (!state.wager.enabled) return;
+
+      const provider = getPhantomProvider();
+      if (!provider) {
+        alert('Phantom wallet not found');
+        return;
+      }
+
+      try {
+        console.log('Cancelling race on-chain...');
+
+        const hostPubkey = new solanaWeb3.PublicKey(state.wallet.publicKey);
+        const racePda = getRacePda(state.multiplayer.lobbyCode);
+
+        // Get the instruction discriminator for cancel_race
+        const discriminator = await getInstructionDiscriminator('cancel_race');
+        const instructionData = new Uint8Array(discriminator);
+
+        // Build the instruction
+        // Accounts: race (mut), host (signer)
+        const cancelInstruction = new solanaWeb3.TransactionInstruction({
+          keys: [
+            { pubkey: racePda, isSigner: false, isWritable: true },
+            { pubkey: hostPubkey, isSigner: true, isWritable: false }
+          ],
+          programId: state.solana.programId,
+          data: instructionData
+        });
+
+        const transaction = new solanaWeb3.Transaction().add(cancelInstruction);
+        const { blockhash } = await state.solana.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = hostPubkey;
+
+        console.log('Requesting wallet signature for race cancellation...');
+
+        const signedTransaction = await provider.signTransaction(transaction);
+        const signature = await state.solana.connection.sendRawTransaction(
+          signedTransaction.serialize(),
+          { skipPreflight: false, preflightCommitment: 'confirmed' }
+        );
+
+        console.log('Cancel race transaction sent:', signature);
+
+        const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+        if (confirmation.value.err) {
+          throw new Error('Cancel race failed: ' + JSON.stringify(confirmation.value.err));
+        }
+
+        console.log('Race cancelled on-chain:', signature);
+
+        // Update lobby status in database
+        const supabase = initSupabaseClient();
+        await supabase
+          .from('lobbies')
+          .update({ status: 'cancelled' })
+          .eq('id', state.multiplayer.lobbyId);
+
+        // Broadcast cancellation to all players
+        if (state.multiplayer.channel) {
+          state.multiplayer.channel.send({
+            type: 'broadcast',
+            event: 'game_event',
+            payload: { type: 'RACE_CANCELLED' }
+          });
+        }
+
+        // Show refund UI
+        state.wager.cancelled = true;
+        updateWagerUI();
+
+        alert('Race cancelled. Players can now claim refunds.');
+        return signature;
+
+      } catch (err) {
+        console.error('Failed to cancel race:', err);
+        alert('Failed to cancel race: ' + (err.message || err));
+      }
+    }
+
+    // Claim refund after race cancellation (any player who deposited)
+    async function claimRefundOnChain() {
+      if (!state.wager.enabled) return;
+      if (!state.wager.deposited) {
+        alert('You have not deposited, nothing to refund');
+        return;
+      }
+
+      const provider = getPhantomProvider();
+      if (!provider) {
+        alert('Phantom wallet not found');
+        return;
+      }
+
+      try {
+        console.log('Claiming refund...');
+
+        const playerPubkey = new solanaWeb3.PublicKey(state.wallet.publicKey);
+        const mintPubkey = new solanaWeb3.PublicKey(state.wager.tokenMint);
+        const racePda = getRacePda(state.multiplayer.lobbyCode);
+        const escrowPda = getEscrowPda(racePda);
+        const playerTokenAccount = getAssociatedTokenAddress(mintPubkey, playerPubkey);
+
+        // Get the instruction discriminator for claim_refund
+        const discriminator = await getInstructionDiscriminator('claim_refund');
+        const instructionData = new Uint8Array(discriminator);
+
+        // Build the instruction
+        // Accounts: race (mut), escrow (mut), player_token_account (mut), player (signer, mut), token_program
+        const refundInstruction = new solanaWeb3.TransactionInstruction({
+          keys: [
+            { pubkey: racePda, isSigner: false, isWritable: true },
+            { pubkey: escrowPda, isSigner: false, isWritable: true },
+            { pubkey: playerTokenAccount, isSigner: false, isWritable: true },
+            { pubkey: playerPubkey, isSigner: true, isWritable: true },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
+          ],
+          programId: state.solana.programId,
+          data: instructionData
+        });
+
+        const transaction = new solanaWeb3.Transaction().add(refundInstruction);
+        const { blockhash } = await state.solana.connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = playerPubkey;
+
+        console.log('Requesting wallet signature for refund...');
+
+        const signedTransaction = await provider.signTransaction(transaction);
+        const signature = await state.solana.connection.sendRawTransaction(
+          signedTransaction.serialize(),
+          { skipPreflight: false, preflightCommitment: 'confirmed' }
+        );
+
+        console.log('Refund transaction sent:', signature);
+
+        const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+        if (confirmation.value.err) {
+          throw new Error('Refund failed: ' + JSON.stringify(confirmation.value.err));
+        }
+
+        console.log('Refund claimed:', signature);
+
+        // Update local state
+        state.wager.deposited = false;
+        state.wager.refunded = true;
+
+        // Update database
+        await supabaseRequest(`lobby_players?lobby_id=eq.${state.multiplayer.lobbyId}&wallet_address=eq.${state.wallet.publicKey}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ has_deposited: false })
+        });
+
+        updateWagerUI();
+        alert('Refund claimed! Transaction: ' + signature.slice(0, 20) + '...');
+        return signature;
+
+      } catch (err) {
+        console.error('Failed to claim refund:', err);
+        alert('Failed to claim refund: ' + (err.message || err));
       }
     }
 
@@ -3307,6 +3529,9 @@
         case 'NEW_RACE':
           handleNewRace(payload);
           break;
+        case 'RACE_CANCELLED':
+          handleRaceCancelled(payload);
+          break;
       }
     }
 
@@ -3319,6 +3544,8 @@
 
       // Reset deposit status
       state.wager.deposited = false;
+      state.wager.cancelled = false;
+      state.wager.refunded = false;
       state.multiplayer.players.forEach(p => {
         p.hasDeposited = false;
       });
@@ -3326,6 +3553,14 @@
       // Update UI
       updateWagerUI();
       renderMpPlayerList();
+    }
+
+    // Handle race cancellation broadcast
+    function handleRaceCancelled(payload) {
+      console.log('Race cancelled by host');
+      state.wager.cancelled = true;
+      updateWagerUI();
+      alert('The host has cancelled the race. You can claim a refund for your deposit.');
     }
 
     function handleRemotePlayerState(payload) {
@@ -4260,6 +4495,18 @@
       // Deposit button for wagering
       document.getElementById('depositBtn')?.addEventListener('click', async () => {
         await depositWager();
+      });
+
+      // Cancel race button (host only)
+      document.getElementById('cancelRaceBtn')?.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to cancel this race? All players will be able to claim refunds.')) {
+          await cancelRaceOnChain();
+        }
+      });
+
+      // Claim refund button
+      document.getElementById('claimRefundBtn')?.addEventListener('click', async () => {
+        await claimRefundOnChain();
       });
 
       document.getElementById('browserBackBtn')?.addEventListener('click', () => {

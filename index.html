@@ -3304,7 +3304,28 @@
         case 'PLAYER_DEPOSIT':
           handlePlayerDeposit(payload);
           break;
+        case 'NEW_RACE':
+          handleNewRace(payload);
+          break;
       }
+    }
+
+    // Handle new race created (for Race Again with wagering)
+    function handleNewRace(payload) {
+      console.log('New race created:', payload.lobbyCode);
+
+      // Update lobby code for new race PDA
+      state.multiplayer.lobbyCode = payload.lobbyCode;
+
+      // Reset deposit status
+      state.wager.deposited = false;
+      state.multiplayer.players.forEach(p => {
+        p.hasDeposited = false;
+      });
+
+      // Update UI
+      updateWagerUI();
+      renderMpPlayerList();
     }
 
     function handleRemotePlayerState(payload) {
@@ -4268,6 +4289,75 @@
           readyBtn.textContent = 'READY';
         }
 
+        // Clear ready timer
+        clearReadyTimer();
+
+        // Reset wager state for new race (if wagering enabled)
+        if (state.wager.enabled) {
+          state.wager.deposited = false;
+
+          // Reset all players' deposit status
+          state.multiplayer.players.forEach(p => {
+            p.hasDeposited = false;
+          });
+
+          // Reset deposit status in database
+          const supabase = initSupabaseClient();
+          await supabase
+            .from('lobby_players')
+            .update({ has_deposited: false, deposit_signature: null })
+            .eq('lobby_id', state.multiplayer.lobbyId);
+
+          // Host creates new race on-chain
+          if (state.multiplayer.isHost) {
+            try {
+              const raceAgainBtn = document.getElementById('raceAgainBtn');
+              if (raceAgainBtn) {
+                raceAgainBtn.textContent = 'CREATING NEW RACE...';
+                raceAgainBtn.disabled = true;
+              }
+
+              // Generate new lobby code for the new race PDA
+              const newCode = generateLobbyCode();
+              state.multiplayer.lobbyCode = newCode;
+
+              // Update lobby code in database
+              await supabase
+                .from('lobbies')
+                .update({ code: newCode })
+                .eq('id', state.multiplayer.lobbyId);
+
+              // Create new race on-chain
+              await createRaceOnChain(newCode, state.wager.tokenMint, state.wager.amount);
+
+              if (raceAgainBtn) {
+                raceAgainBtn.textContent = 'RACE AGAIN';
+                raceAgainBtn.disabled = false;
+              }
+
+              // Broadcast new race to other players
+              state.multiplayer.channel.send({
+                type: 'broadcast',
+                event: 'game_event',
+                payload: {
+                  type: 'NEW_RACE',
+                  lobbyCode: newCode
+                }
+              });
+
+            } catch (err) {
+              console.error('Failed to create new race:', err);
+              alert('Failed to create new race: ' + (err.message || err));
+              const raceAgainBtn = document.getElementById('raceAgainBtn');
+              if (raceAgainBtn) {
+                raceAgainBtn.textContent = 'RACE AGAIN';
+                raceAgainBtn.disabled = false;
+              }
+              return;
+            }
+          }
+        }
+
         // Update presence with reset ready status
         if (state.multiplayer.channel) {
           await state.multiplayer.channel.track({
@@ -4279,6 +4369,8 @@
         }
 
         showWaitingRoom();
+        updateWagerUI();
+        renderMpPlayerList();
       });
 
       document.getElementById('resultsMenuBtn')?.addEventListener('click', async () => {

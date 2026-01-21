@@ -1424,18 +1424,11 @@
           <button class="asset-class-btn" id="assetClassBtn">Asset Class</button>
           <div class="asset-class-dropdown" id="assetClassDropdown">
             <div class="asset-class-dropdown-header">Asset Class</div>
-            <div class="asset-class-option selected" data-class="all">All</div>
-            <div class="asset-class-option" data-class="commodities">Commodities</div>
+            <div class="asset-class-option selected" data-class="all">All Crypto</div>
             <div class="asset-class-option" data-class="crypto">Crypto</div>
             <div class="asset-class-option" data-class="crypto_index">Crypto Index</div>
             <div class="asset-class-option" data-class="crypto_nav">Crypto NAV</div>
             <div class="asset-class-option" data-class="crypto_redemption_rate">Crypto Redemption Rate</div>
-            <div class="asset-class-option" data-class="eco">ECO</div>
-            <div class="asset-class-option" data-class="equity">Equity</div>
-            <div class="asset-class-option" data-class="fx">FX</div>
-            <div class="asset-class-option" data-class="kalshi">Kalshi</div>
-            <div class="asset-class-option" data-class="metal">Metal</div>
-            <div class="asset-class-option" data-class="rates">Rates</div>
           </div>
         </div>
         <div class="selected-feed-display" id="selectedFeedDisplay">BTC/USD</div>
@@ -4160,16 +4153,46 @@
       state.feedsLoading = true;
       renderFeedResults();
 
+      // Stablecoins to exclude (base symbols)
+      const STABLECOINS = [
+        'USDC', 'USDT', 'DAI', 'BUSD', 'TUSD', 'USDP', 'FRAX', 'LUSD', 'GUSD',
+        'USDJ', 'CUSD', 'UST', 'USDD', 'USDN', 'FEI', 'MIM', 'DOLA', 'SUSD',
+        'EURS', 'EURT', 'EUROC', 'PYUSD', 'FDUSD', 'CRVUSD', 'GHO', 'EURC'
+      ];
+
+      // Crypto-related asset types to keep
+      const CRYPTO_TYPES = ['crypto', 'crypto_index', 'crypto_nav', 'crypto_redemption_rate'];
+
       try {
         const response = await fetch(`${HERMES_ENDPOINT}/v2/price_feeds`);
         const feeds = await response.json();
 
+        // Filter to only crypto feeds, excluding stablecoins
+        const cryptoFeeds = feeds.filter(feed => {
+          const assetType = (feed.attributes?.asset_type || '').toLowerCase();
+          const base = (feed.attributes?.base || '').toUpperCase();
+          const symbol = (feed.attributes?.symbol || '').toUpperCase();
+
+          // Must be a crypto-related asset type
+          if (!CRYPTO_TYPES.includes(assetType)) return false;
+
+          // Exclude stablecoins
+          if (STABLECOINS.includes(base)) return false;
+
+          // Also check symbol for stablecoin patterns
+          if (STABLECOINS.some(s => symbol.startsWith(s + '/') || symbol.includes('.' + s + '/'))) return false;
+
+          return true;
+        });
+
         // Sort alphabetically by symbol and store
-        state.allFeeds = feeds.sort((a, b) => {
+        state.allFeeds = cryptoFeeds.sort((a, b) => {
           const symbolA = a.attributes?.symbol || a.id;
           const symbolB = b.attributes?.symbol || b.id;
           return symbolA.localeCompare(symbolB);
         });
+
+        console.log(`Loaded ${state.allFeeds.length} crypto feeds (filtered from ${feeds.length} total)`);
 
         state.feedsLoading = false;
         filterFeeds();

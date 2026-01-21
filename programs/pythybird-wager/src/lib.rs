@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer, Mint};
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("3P9RXvCHHM55rCaex17M7WB562WvTLSJHeudZpLHqYhN");
 
 /// Maximum number of players per race
 pub const MAX_PLAYERS: usize = 4;
@@ -87,6 +87,10 @@ pub mod pythybird_wager {
     /// Declare the winner and distribute the pot
     /// Only host can declare winner, race must be in Racing status
     pub fn declare_winner(ctx: Context<DeclareWinner>, winner: Pubkey) -> Result<()> {
+        // Get these before mutable borrow to satisfy borrow checker
+        let race_key = ctx.accounts.race.key();
+        let escrow_bump = ctx.accounts.race.escrow_bump;
+
         let race = &mut ctx.accounts.race;
 
         // Validations
@@ -99,11 +103,10 @@ pub mod pythybird_wager {
             .ok_or(WagerError::Overflow)?;
 
         // Transfer entire pot to winner
-        let race_key = ctx.accounts.race.key();
         let seeds = &[
             b"escrow",
             race_key.as_ref(),
-            &[race.escrow_bump],
+            &[escrow_bump],
         ];
         let signer_seeds = &[&seeds[..]];
 
@@ -141,19 +144,22 @@ pub mod pythybird_wager {
     /// Claim refund after race cancellation
     /// Any player who deposited can claim their wager back
     pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
-        let race = &mut ctx.accounts.race;
+        // Get these before mutable borrow to satisfy borrow checker
+        let race_key = ctx.accounts.race.key();
+        let escrow_bump = ctx.accounts.race.escrow_bump;
         let player = ctx.accounts.player.key();
+
+        let race = &mut ctx.accounts.race;
 
         // Validations
         require!(race.status == RaceStatus::Cancelled, WagerError::RaceNotCancelled);
         require!(race.players.contains(&player), WagerError::NotInRace);
 
         // Transfer refund from escrow to player
-        let race_key = ctx.accounts.race.key();
         let seeds = &[
             b"escrow",
             race_key.as_ref(),
-            &[race.escrow_bump],
+            &[escrow_bump],
         ];
         let signer_seeds = &[&seeds[..]];
 

@@ -1,0 +1,7 @@
+Wrote new keypair to C:\Users\tyron\.config\solana\id.json
+==============================================================================
+pubkey: GDDjmxqqKj3N5d45sSi4HXUWJHYbG6raY4abTRRnC2H2
+==============================================================================
+Save this seed phrase and your BIP39 passphrase to recover your new keypair:
+flip hood blanket swamp decorate clerk couch crazy kitten rigid auction ladder
+==============================================================================

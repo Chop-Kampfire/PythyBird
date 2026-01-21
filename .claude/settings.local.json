@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix obstacles disappearing in multiplayer sync\n\nRemove overly aggressive spacing check from handleObstacleSync that was\nincorrectly filtering out valid obstacles. The issue occurred when local\nobstacle positions diverged from synced positions due to timing/latency,\ncausing the spacing comparison to fail and remove obstacles before players\ncould reach them.\n\nThe host already enforces proper spacing in generateObstacle\\(\\), so the\nsync should trust the host''s complete snapshot.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(where:*)",
+      "Bash(solana:*)",
+      "Bash(git commit:*)",
+      "Bash(rustc:*)",
+      "Bash(anchor:*)"
+    ]
+  }
+}

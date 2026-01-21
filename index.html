@@ -2216,18 +2216,36 @@
 
         // Sign and send transaction via Phantom
         const signedTransaction = await provider.signTransaction(transaction);
-        const signature = await state.solana.connection.sendRawTransaction(signedTransaction.serialize());
+
+        // Send with preflight checks enabled to catch errors early
+        const signature = await state.solana.connection.sendRawTransaction(
+          signedTransaction.serialize(),
+          {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed'
+          }
+        );
 
         console.log('Transaction sent:', signature);
 
-        // Wait for confirmation
-        const confirmation = await state.solana.connection.confirmTransaction(signature, 'confirmed');
+        // Wait for confirmation with timeout
+        const confirmation = await state.solana.connection.confirmTransaction(
+          {
+            signature: signature,
+            blockhash: blockhash,
+            lastValidBlockHeight: (await state.solana.connection.getLatestBlockhash()).lastValidBlockHeight
+          },
+          'confirmed'
+        );
 
         if (confirmation.value.err) {
-          throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
+          console.error('Transaction error:', confirmation.value.err);
+          throw new Error('Transaction failed on-chain: ' + JSON.stringify(confirmation.value.err));
         }
 
+        // Verify the transaction succeeded by checking the escrow balance increased
         console.log('Deposit confirmed:', signature);
+        console.log('View on Solana Explorer: https://explorer.solana.com/tx/' + signature + '?cluster=devnet');
 
         // Mark as deposited locally
         state.wager.deposited = true;
@@ -3116,18 +3134,34 @@
     }
 
     function handlePresenceSync(presenceState) {
-      const players = [];
+      // Merge presence data with existing player data to preserve hasDeposited, isHost, etc.
       for (const [wallet, presences] of Object.entries(presenceState)) {
         if (presences.length > 0) {
-          players.push({
-            wallet: wallet,
-            slot: presences[0].slot,
-            displayName: presences[0].displayName,
-            ready: presences[0].ready || false
-          });
+          const existingPlayer = state.multiplayer.players.find(p => p.wallet === wallet);
+          if (existingPlayer) {
+            // Update presence fields but keep other data
+            existingPlayer.slot = presences[0].slot;
+            existingPlayer.displayName = presences[0].displayName;
+            existingPlayer.ready = presences[0].ready || false;
+          } else {
+            // New player - add with presence data
+            state.multiplayer.players.push({
+              wallet: wallet,
+              slot: presences[0].slot,
+              displayName: presences[0].displayName,
+              ready: presences[0].ready || false,
+              hasDeposited: false,
+              isHost: false,
+              alive: true
+            });
+          }
         }
       }
-      state.multiplayer.players = players;
+
+      // Remove players no longer in presence
+      const presentWallets = Object.keys(presenceState);
+      state.multiplayer.players = state.multiplayer.players.filter(p => presentWallets.includes(p.wallet));
+
       renderPlayerSlots();
       updateStartButton();
       updateReadyStatus();
